@@ -94,6 +94,9 @@ function normalizeBlock(raw: unknown): Block | null {
   if (type === "reference") {
     return { type: "reference", text, level: 0 };
   }
+  if (type === "formula") {
+    return { type: "formula", text, level: 0 };
+  }
   return { type: "paragraph", text, level: 0 };
 }
 
@@ -103,11 +106,11 @@ function createPrompt(rawText: string, mode: Mode): string {
     "请将输入文本转换为结构化文档数据。",
     "必须输出严格 JSON，不要输出 markdown，不要输出额外解释。",
     "JSON 格式如下：",
-    '{"title":"", "mode":"official|thesis", "blocks":[{"type":"heading|paragraph|reference","level":1,"text":""}]}',
+    '{"title":"", "mode":"official|thesis", "blocks":[{"type":"heading|paragraph|reference|formula","level":1,"text":""}]}',
     "规则：",
     "1) 只能使用原文中的句子或短语，不允许编造新主题。",
     "2) 必须保持原文顺序，不可重排段落。",
-    "3) 标题层级仅允许 1/2/3，正文为 paragraph，参考文献条目为 reference。",
+    "3) 标题层级仅允许 1/2/3，正文为 paragraph，参考文献条目为 reference，公式行为 formula。",
     "4) 识别标题时，优先识别短标题（一般 <= 26 字）。",
     "5) 凡是编号句（如 1. / 2. / （1））且内容较长、包含说明性标点（：；。），通常判为 paragraph，不要判为 heading。",
     "6) 如果识别到摘要/目录/参考文献/致谢等学术结构，mode 推荐 thesis，否则 official。",

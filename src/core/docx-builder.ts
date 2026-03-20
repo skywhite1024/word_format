@@ -1,3 +1,4 @@
+import JSZip from "jszip";
 import {
   AlignmentType,
   Document,
@@ -8,7 +9,9 @@ import {
   Packer,
   PageNumber,
   Paragraph,
+  Tab,
   TableOfContents,
+  TabStopType,
   TextRun,
   convertMillimetersToTwip,
 } from "docx";
@@ -18,8 +21,10 @@ const FONT_CN_SONG = "宋体";
 const FONT_CN_HEI = "黑体";
 const FONT_CN_KAI = "楷体_GB2312";
 const FONT_EN = "Times New Roman";
+const FONT_MATH = "Cambria Math";
 const COLOR_BLACK = "000000";
 const TWO_CHAR_TWIP = 2 * 210;
+const PAGE_CONTENT_WIDTH_TWIP = convertMillimetersToTwip(210 - 30 - 20);
 
 function textRun(
   text: string,
@@ -39,6 +44,20 @@ function textRun(
     },
     characterSpacing: 0,
     boldComplexScript: bold,
+  });
+}
+
+function mathRun(text: string): TextRun {
+  return new TextRun({
+    text,
+    size: 24,
+    color: COLOR_BLACK,
+    font: {
+      ascii: FONT_MATH,
+      hAnsi: FONT_MATH,
+      eastAsia: FONT_CN_SONG,
+    },
+    characterSpacing: 0,
   });
 }
 
@@ -103,6 +122,29 @@ function referenceParagraph(raw: string, index: number): Paragraph {
   });
 }
 
+function formulaParagraph(text: string): Paragraph {
+  const content = text.trim();
+  const withNo = content.match(/^(.+?)\s*\((\d+[-－]\d+)\)$/);
+  if (!withNo) {
+    return new Paragraph({
+      children: [mathRun(content)],
+      alignment: AlignmentType.CENTER,
+      spacing: { before: 120, after: 120, line: 360, lineRule: LineRuleType.AUTO },
+    });
+  }
+
+  const expression = withNo[1].trim();
+  const no = `(${withNo[2]})`;
+  return new Paragraph({
+    children: [new TextRun({ children: [new Tab()] }), mathRun(expression), new TextRun({ children: [new Tab()] }), textRun(no, FONT_CN_SONG, 21)],
+    tabStops: [
+      { type: TabStopType.CENTER, position: Math.floor(PAGE_CONTENT_WIDTH_TWIP / 2) },
+      { type: TabStopType.RIGHT, position: PAGE_CONTENT_WIDTH_TWIP },
+    ],
+    spacing: { before: 120, after: 120, line: 360, lineRule: LineRuleType.AUTO },
+  });
+}
+
 function buildBody(structured: StructuredDoc): FileChild[] {
   const paragraphs: FileChild[] = [];
 
@@ -144,10 +186,57 @@ function buildBody(structured: StructuredDoc): FileChild[] {
       refIdx += 1;
       continue;
     }
+    if (block.type === "formula") {
+      paragraphs.push(formulaParagraph(block.text));
+      continue;
+    }
     paragraphs.push(baseParagraph(block.text));
   }
 
   return paragraphs;
+}
+
+function applyCharIndentXmlPatch(xml: string): string {
+  return xml.replace(/<w:ind([^/>]*)\/>/g, (_full, rawAttrs: string) => {
+    let attrs = rawAttrs;
+
+    const hasFirstLine = /\bw:firstLine="[^"]*"/.test(attrs);
+    const hasHanging = /\bw:hanging="[^"]*"/.test(attrs);
+
+    if (hasFirstLine) {
+      attrs = attrs.replace(/\s*w:firstLine="[^"]*"/g, "");
+      if (!/\bw:firstLineChars=/.test(attrs)) {
+        attrs += ' w:firstLineChars="200"';
+      }
+    }
+
+    if (hasHanging) {
+      attrs = attrs.replace(/\s*w:left="[^"]*"/g, "");
+      attrs = attrs.replace(/\s*w:hanging="[^"]*"/g, "");
+      if (!/\bw:leftChars=/.test(attrs)) {
+        attrs += ' w:leftChars="200"';
+      }
+      if (!/\bw:hangingChars=/.test(attrs)) {
+        attrs += ' w:hangingChars="200"';
+      }
+    }
+
+    return `<w:ind${attrs}/>`;
+  });
+}
+
+async function normalizeIndentToChars(docBytes: Uint8Array): Promise<Uint8Array> {
+  const zip = await JSZip.loadAsync(docBytes);
+  const docXmlFile = zip.file("word/document.xml");
+  if (!docXmlFile) {
+    return docBytes;
+  }
+
+  const originalXml = await docXmlFile.async("string");
+  const patchedXml = applyCharIndentXmlPatch(originalXml);
+  zip.file("word/document.xml", patchedXml);
+
+  return zip.generateAsync({ type: "uint8array" });
 }
 
 export async function buildDocx(structured: StructuredDoc): Promise<Uint8Array> {
@@ -188,5 +277,6 @@ export async function buildDocx(structured: StructuredDoc): Promise<Uint8Array> 
     ],
   });
 
-  return Packer.toBuffer(doc);
+  const rawBytes = await Packer.toBuffer(doc);
+  return normalizeIndentToChars(rawBytes);
 }

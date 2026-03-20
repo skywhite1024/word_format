@@ -11,10 +11,11 @@ describe("docx-builder", () => {
       blocks: [
         { type: "heading", level: 1, text: "一、一级标题" },
         { type: "paragraph", level: 0, text: "正文段落示例。" },
+        { type: "formula", level: 0, text: "P = a + b (2-1)" },
         { type: "heading", level: 1, text: "参考文献" },
         { type: "reference", level: 0, text: "[1] 张三. 参考文献示例." },
       ],
-      stats: { paragraphCount: 2, headingCount: 2, referenceCount: 1 },
+      stats: { paragraphCount: 3, headingCount: 2, referenceCount: 1 },
     };
 
     const bytes = await buildDocx(structured);
@@ -24,7 +25,9 @@ describe("docx-builder", () => {
 
     const content = xml ?? "";
     expect(content).toContain('w:color w:val="000000"');
-    expect(content).toContain('w:firstLine="420"');
-    expect(content).toContain('w:hanging="420"');
+    expect(content).toContain('w:firstLineChars="200"');
+    expect(content).toContain('w:hangingChars="200"');
+    expect(content).toContain('w:ascii="Cambria Math"');
+    expect(content).not.toContain('w:firstLine="420"');
   });
 });

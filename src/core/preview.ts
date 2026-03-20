@@ -10,6 +10,8 @@ export function renderPreview(structured: StructuredDoc): string {
   for (const block of structured.blocks) {
     if (block.type === "heading") {
       lines.push(block.text);
+    } else if (block.type === "formula") {
+      lines.push(`[公式] ${block.text}`);
     } else if (block.type === "reference") {
       lines.push(`[参考] ${block.text}`);
     } else {

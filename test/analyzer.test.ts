@@ -52,4 +52,10 @@ describe("analyzeText", () => {
     const headingTexts = result.blocks.filter((b) => b.type === "heading").map((b) => b.text);
     expect(headingTexts).toContain("2.约束条件设计");
   });
+
+  it("should detect formula line as formula block", () => {
+    const text = "模型\n\nP = a + b (2-1)\n\n其中 P 为目标函数。";
+    const result = analyzeText(text, "official");
+    expect(result.blocks.some((b) => b.type === "formula")).toBe(true);
+  });
 });

@@ -82,7 +82,7 @@ function splitParagraphs(text: string): string[] {
       continue;
     }
 
-    if (headingLevel(line) !== null) {
+    if (headingLevel(line) !== null || isFormulaText(line)) {
       if (buffer) {
         paragraphs.push(buffer);
         buffer = "";
@@ -114,6 +114,18 @@ function splitParagraphs(text: string): string[] {
 function looksLikeReference(text: string): boolean {
   const t = text.trim();
   return /^\[\d+\]/.test(t) || /^\d+[).、]\s+/.test(t);
+}
+
+function isFormulaText(text: string): boolean {
+  const t = text.trim();
+  if (!t) return false;
+  if (/^\(\d+[-－]\d+\)$/.test(t)) return true;
+  if (/^公式\s*\(?\d+[-－]\d+\)?[:：]?\s*/.test(t)) return true;
+
+  const hasOperator = /[=+\-×÷*/^]/.test(t);
+  const hasAlphaOrGreek = /[A-Za-zα-ωΑ-Ω]/.test(t);
+  const hasManyChinese = (t.match(/[\u4e00-\u9fa5]/g) ?? []).length > 6;
+  return hasOperator && hasAlphaOrGreek && !hasManyChinese && t.length <= 160;
 }
 
 function normalizeReferenceItems(blocks: Block[]): Block[] {
@@ -159,6 +171,9 @@ function sanitizeBlocks(blocks: Block[]): Block[] {
       }
       if (block.type === "reference") {
         return { type: "reference" as const, text, level: 0 };
+      }
+      if (block.type === "formula") {
+        return { type: "formula" as const, text, level: 0 };
       }
       return { type: "paragraph" as const, text, level: 0 };
     })
@@ -212,6 +227,8 @@ export function analyzeText(rawText: string, mode: Mode = "auto"): StructuredDoc
     const level = headingLevel(paragraph);
     if (level !== null) {
       blocks.push({ type: "heading", text: paragraph, level });
+    } else if (isFormulaText(paragraph)) {
+      blocks.push({ type: "formula", text: paragraph, level: 0 });
     } else {
       blocks.push({ type: "paragraph", text: paragraph, level: 0 });
     }
