@@ -1,6 +1,6 @@
 import type { Block, Mode, StructuredDoc } from "./types";
 
-const SENTENCE_ENDINGS = ["。", "！", "？", "；", ".", "!", "?", ";", ":"];
+const SENTENCE_ENDINGS = ["。", "！", "？", "；", "：", ".", "!", "?", ";", ":"];
 const THESIS_HINTS = ["摘要", "ABSTRACT", "目录", "参考文献", "关键词", "致谢"];
 
 function normalizeText(rawText: string): string {
@@ -95,7 +95,7 @@ function looksLikeReference(text: string): boolean {
   return /^\[\d+\]/.test(t) || /^\d+[).、]\s+/.test(t);
 }
 
-function normalizeReferences(blocks: Block[]): Block[] {
+function normalizeReferenceItems(blocks: Block[]): Block[] {
   const output: Block[] = [];
   let inRefSection = false;
 
@@ -117,6 +117,49 @@ function normalizeReferences(blocks: Block[]): Block[] {
   }
 
   return output;
+}
+
+function toSafeMode(mode: Mode): Exclude<Mode, "auto"> {
+  return mode === "auto" ? "official" : mode;
+}
+
+function sanitizeBlocks(blocks: Block[]): Block[] {
+  return blocks
+    .map((block) => {
+      const text = (block.text ?? "").trim();
+      if (!text) return null;
+
+      if (block.type === "heading") {
+        const level = block.level >= 1 && block.level <= 3 ? block.level : 1;
+        return { type: "heading" as const, text, level };
+      }
+      if (block.type === "reference") {
+        return { type: "reference" as const, text, level: 0 };
+      }
+      return { type: "paragraph" as const, text, level: 0 };
+    })
+    .filter((item): item is Block => item !== null);
+}
+
+export function composeStructuredDoc(
+  mode: Mode,
+  title: string,
+  blocks: Block[],
+): StructuredDoc {
+  const targetMode = toSafeMode(mode);
+  const cleanBlocks = sanitizeBlocks(blocks);
+  const enhancedBlocks = targetMode === "thesis" ? normalizeReferenceItems(cleanBlocks) : cleanBlocks;
+
+  return {
+    mode: targetMode,
+    title: title.trim(),
+    blocks: enhancedBlocks,
+    stats: {
+      paragraphCount: enhancedBlocks.filter((item) => item.type !== "heading").length,
+      headingCount: enhancedBlocks.filter((item) => item.type === "heading").length,
+      referenceCount: enhancedBlocks.filter((item) => item.type === "reference").length,
+    },
+  };
 }
 
 export function analyzeText(rawText: string, mode: Mode = "auto"): StructuredDoc {
@@ -150,16 +193,5 @@ export function analyzeText(rawText: string, mode: Mode = "auto"): StructuredDoc
     }
   }
 
-  const enhancedBlocks = targetMode === "thesis" ? normalizeReferences(blocks) : blocks;
-
-  return {
-    mode: targetMode,
-    title,
-    blocks: enhancedBlocks,
-    stats: {
-      paragraphCount: paragraphs.length,
-      headingCount: enhancedBlocks.filter((item) => item.type === "heading").length,
-      referenceCount: enhancedBlocks.filter((item) => item.type === "reference").length,
-    },
-  };
+  return composeStructuredDoc(targetMode, title, blocks);
 }

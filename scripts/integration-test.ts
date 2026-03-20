@@ -19,6 +19,11 @@ function startHarnessServer(): Promise<http.Server> {
     ASSETS: {
       fetch: async () => new Response("Not Found", { status: 404 }),
     },
+    MODELSCOPE_API_KEY: process.env.MODELSCOPE_API_KEY,
+    MODELSCOPE_BASE_URL:
+      process.env.MODELSCOPE_BASE_URL ?? "https://api-inference.modelscope.cn/v1",
+    MODELSCOPE_MODEL_ID: process.env.MODELSCOPE_MODEL_ID ?? "ZhipuAI/GLM-5",
+    MODELSCOPE_TIMEOUT_MS: process.env.MODELSCOPE_TIMEOUT_MS ?? "60000",
   } as any;
 
   const server = http.createServer(async (req, res) => {
@@ -56,6 +61,7 @@ async function main(): Promise<void> {
   try {
     const payload = {
       mode: "thesis",
+      useLlm: false,
       text: [
         "自动化排版系统设计",
         "",
@@ -91,6 +97,9 @@ async function main(): Promise<void> {
     if (formatData.structured.mode !== "thesis") {
       throw new Error("模式识别失败，预期 thesis");
     }
+    if (formatData.meta?.engine !== "rule") {
+      throw new Error(`应走规则引擎，实际为: ${formatData.meta?.engine}`);
+    }
     if (!levels.includes(1) || !levels.includes(2)) {
       throw new Error(`标题层级异常: ${levels.join(",")}`);
     }
@@ -120,6 +129,29 @@ async function main(): Promise<void> {
       referenceCount: formatData.structured.stats.referenceCount,
       docxSize: docxBuffer.length,
     });
+
+    if (process.env.MODELSCOPE_API_KEY) {
+      const llmResp = await fetch(`http://${HOST}:${PORT}/api/format`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          mode: "auto",
+          useLlm: true,
+          text: "关于推进自动化排版系统建设的通知\n\n各部门需于本周提交材料并完成审校。",
+        }),
+      });
+      if (!llmResp.ok) {
+        throw new Error(`LLM 路径请求失败: ${llmResp.status}`);
+      }
+      const llmData = await llmResp.json();
+      if (llmData.meta?.engine !== "llm") {
+        throw new Error(`期望走 llm 引擎，实际: ${llmData.meta?.engine}，原因: ${llmData.meta?.fallbackReason}`);
+      }
+      console.log("llm_path_ok", {
+        engine: llmData.meta?.engine,
+        fallbackReason: llmData.meta?.fallbackReason,
+      });
+    }
   } finally {
     await new Promise<void>((resolve, reject) => {
       server.close((err) => {

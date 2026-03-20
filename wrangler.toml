@@ -7,3 +7,8 @@ compatibility_flags = ["nodejs_compat"]
 directory = "./public"
 binding = "ASSETS"
 run_worker_first = ["/api/*"]
+
+[vars]
+MODELSCOPE_BASE_URL = "https://api-inference.modelscope.cn/v1"
+MODELSCOPE_MODEL_ID = "ZhipuAI/GLM-5"
+MODELSCOPE_TIMEOUT_MS = "60000"

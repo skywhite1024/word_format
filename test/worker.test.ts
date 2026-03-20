@@ -8,6 +8,7 @@ describe("worker api", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         mode: "official",
+        useLlm: false,
         text: "测试标题\n\n一、章节\n\n正文内容",
       }),
     });
@@ -21,6 +22,7 @@ describe("worker api", () => {
       structured: { stats: { headingCount: number } };
     };
     expect(data.structured.stats.headingCount).toBe(1);
+    expect((data as any).meta.engine).toBe("rule");
   });
 
   it("should return docx binary", async () => {
@@ -29,6 +31,7 @@ describe("worker api", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         mode: "thesis",
+        useLlm: false,
         text: "论文标题\n\n摘要\n\n测试内容\n\n参考文献\n\n[1] 张三. 示例文献.",
       }),
     });

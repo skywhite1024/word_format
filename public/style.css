@@ -52,6 +52,19 @@ label {
   font-weight: 600;
 }
 
+.check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 0 8px;
+  font-weight: 500;
+}
+
+.check input {
+  width: 16px;
+  height: 16px;
+}
+
 select,
 textarea {
   width: 100%;

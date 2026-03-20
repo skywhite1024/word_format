@@ -1,10 +1,21 @@
 import { analyzeText } from "./core/analyzer";
 import { buildDocx } from "./core/docx-builder";
+import { structureTextWithLlm } from "./core/llm-structurer";
 import { renderPreview } from "./core/preview";
-import type { Mode } from "./core/types";
+import type { Mode, StructuredDoc } from "./core/types";
 
 export interface Env {
   ASSETS: Fetcher;
+  MODELSCOPE_API_KEY?: string;
+  MODELSCOPE_BASE_URL?: string;
+  MODELSCOPE_MODEL_ID?: string;
+  MODELSCOPE_TIMEOUT_MS?: string;
+}
+
+interface RequestPayload {
+  text: string;
+  mode: Mode;
+  useLlm: boolean;
 }
 
 function jsonResponse(data: unknown, status = 200): Response {
@@ -28,9 +39,21 @@ function sanitizeMode(input: unknown): Mode {
   return "auto";
 }
 
-async function parsePayload(request: Request): Promise<{ text: string; mode: Mode } | null> {
+function sanitizeUseLlm(input: unknown): boolean {
+  if (typeof input === "boolean") return input;
+  if (typeof input === "string") {
+    return input === "true" || input === "1";
+  }
+  return true;
+}
+
+async function parsePayload(request: Request): Promise<RequestPayload | null> {
   try {
-    const payload = (await request.json()) as { text?: unknown; mode?: unknown };
+    const payload = (await request.json()) as {
+      text?: unknown;
+      mode?: unknown;
+      useLlm?: unknown;
+    };
     const text = typeof payload.text === "string" ? payload.text : "";
     if (!text.trim()) {
       return null;
@@ -41,6 +64,7 @@ async function parsePayload(request: Request): Promise<{ text: string; mode: Mod
     return {
       text,
       mode: sanitizeMode(payload.mode),
+      useLlm: sanitizeUseLlm(payload.useLlm),
     };
   } catch (error) {
     if (error instanceof Error) {
@@ -48,6 +72,40 @@ async function parsePayload(request: Request): Promise<{ text: string; mode: Mod
     }
     throw new Error("请求体解析失败。");
   }
+}
+
+async function buildStructuredResult(
+  payload: RequestPayload,
+  env: Env,
+): Promise<{
+  structured: StructuredDoc;
+  engine: "llm" | "rule";
+  fallbackReason?: string;
+}> {
+  if (payload.useLlm && env.MODELSCOPE_API_KEY) {
+    try {
+      const timeoutMs = Number(env.MODELSCOPE_TIMEOUT_MS ?? "60000");
+      const structured = await structureTextWithLlm(payload.text, payload.mode, {
+        apiKey: env.MODELSCOPE_API_KEY,
+        baseUrl: env.MODELSCOPE_BASE_URL,
+        modelId: env.MODELSCOPE_MODEL_ID,
+        timeoutMs: Number.isFinite(timeoutMs) ? timeoutMs : 60000,
+      });
+      return { structured, engine: "llm" };
+    } catch (error) {
+      const fallbackReason = error instanceof Error ? error.message : "LLM 调用失败";
+      return {
+        structured: analyzeText(payload.text, payload.mode),
+        engine: "rule",
+        fallbackReason,
+      };
+    }
+  }
+
+  return {
+    structured: analyzeText(payload.text, payload.mode),
+    engine: "rule",
+  };
 }
 
 export default {
@@ -59,10 +117,15 @@ export default {
       try {
         const payload = await parsePayload(request);
         if (!payload) return badRequest("text 不能为空");
-        const structured = analyzeText(payload.text, payload.mode);
+
+        const result = await buildStructuredResult(payload, env);
         return jsonResponse({
-          structured,
-          previewText: renderPreview(structured),
+          structured: result.structured,
+          previewText: renderPreview(result.structured),
+          meta: {
+            engine: result.engine,
+            fallbackReason: result.fallbackReason ?? null,
+          },
         });
       } catch (error) {
         const message = error instanceof Error ? error.message : "格式化失败";
@@ -74,8 +137,9 @@ export default {
       try {
         const payload = await parsePayload(request);
         if (!payload) return badRequest("text 不能为空");
-        const structured = analyzeText(payload.text, payload.mode);
-        const fileContent = await buildDocx(structured);
+
+        const result = await buildStructuredResult(payload, env);
+        const fileContent = await buildDocx(result.structured);
         const filename = `formatted_${Date.now()}.docx`;
         const stableBytes = new Uint8Array(fileContent.byteLength);
         stableBytes.set(fileContent);
@@ -89,6 +153,8 @@ export default {
             "Content-Type":
               "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             "Content-Disposition": `attachment; filename="${filename}"`,
+            "X-Format-Engine": result.engine,
+            "X-Format-Fallback": result.fallbackReason ?? "",
             "Cache-Control": "no-store",
           },
         });
