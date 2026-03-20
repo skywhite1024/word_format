@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Word 自动排版 Demo</title>
+    <link rel="stylesheet" href="/static/style.css" />
+  </head>
+  <body>
+    <main class="container">
+      <h1>Word 自动排版 Demo</h1>
+      <p class="subtitle">前端输入文本，后端识别结构并输出正式排版文档</p>
+
+      <section class="panel">
+        <label for="inputText">输入原始文本</label>
+        <textarea id="inputText" placeholder="粘贴待排版文本..."></textarea>
+        <div class="actions">
+          <button id="formatBtn" type="button">结构识别与预览</button>
+          <button id="downloadBtn" type="button">下载 .docx</button>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>识别结果</h2>
+        <div id="stats" class="stats">等待识别...</div>
+        <pre id="preview" class="preview"></pre>
+      </section>
+    </main>
+    <script src="/static/app.js"></script>
+  </body>
+</html>
