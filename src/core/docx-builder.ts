@@ -18,10 +18,12 @@ const FONT_CN_SONG = "宋体";
 const FONT_CN_HEI = "黑体";
 const FONT_CN_KAI = "楷体_GB2312";
 const FONT_EN = "Times New Roman";
+const COLOR_BLACK = "000000";
+const TWO_CHAR_TWIP = 2 * 210;
 
 function textRun(
   text: string,
-  font: string,
+  cnFont: string,
   sizeHalfPt: number,
   bold = false,
 ): TextRun {
@@ -29,10 +31,11 @@ function textRun(
     text,
     bold,
     size: sizeHalfPt,
+    color: COLOR_BLACK,
     font: {
       ascii: FONT_EN,
       hAnsi: FONT_EN,
-      eastAsia: font,
+      eastAsia: cnFont,
     },
     characterSpacing: 0,
     boldComplexScript: bold,
@@ -44,7 +47,7 @@ function baseParagraph(text: string): Paragraph {
     children: [textRun(text, FONT_CN_SONG, 24)],
     alignment: AlignmentType.JUSTIFIED,
     indent: {
-      firstLine: 2 * 210,
+      firstLine: TWO_CHAR_TWIP,
     },
     spacing: {
       before: 0,
@@ -69,7 +72,7 @@ function headingParagraph(block: Block): Paragraph {
       heading: HeadingLevel.HEADING_2,
       children: [textRun(block.text, FONT_CN_HEI, 24, true)],
       alignment: AlignmentType.LEFT,
-      indent: { firstLine: 2 * 210 },
+      indent: { firstLine: TWO_CHAR_TWIP },
       spacing: { before: 0, after: 0, line: 360, lineRule: LineRuleType.AUTO },
     });
   }
@@ -77,7 +80,7 @@ function headingParagraph(block: Block): Paragraph {
     heading: HeadingLevel.HEADING_3,
     children: [textRun(block.text, FONT_CN_KAI, 24, false)],
     alignment: AlignmentType.LEFT,
-    indent: { firstLine: 2 * 210 },
+    indent: { firstLine: TWO_CHAR_TWIP },
     spacing: { before: 0, after: 0, line: 360, lineRule: LineRuleType.AUTO },
   });
 }
@@ -88,8 +91,8 @@ function referenceParagraph(raw: string, index: number): Paragraph {
     children: [textRun(`[${index}] ${content}`, FONT_CN_KAI, 21)],
     alignment: AlignmentType.LEFT,
     indent: {
-      left: 0,
-      hanging: 2 * 210,
+      left: TWO_CHAR_TWIP,
+      hanging: TWO_CHAR_TWIP,
     },
     spacing: {
       before: 0,
@@ -171,6 +174,7 @@ export async function buildDocx(structured: StructuredDoc): Promise<Uint8Array> 
                   new TextRun({
                     children: [PageNumber.CURRENT],
                     size: 20,
+                    color: COLOR_BLACK,
                     font: FONT_EN,
                   }),
                   textRun(" 页", FONT_CN_SONG, 20),

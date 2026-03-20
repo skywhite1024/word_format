@@ -28,4 +28,21 @@ describe("analyzeText", () => {
     expect(result.mode).toBe("official");
     expect(result.stats.headingCount).toBe(1);
   });
+
+  it("should not misclassify long numbered sentence as heading", () => {
+    const text = [
+      "调度模型",
+      "",
+      "1. 储能侧约束：即上述的储能运行约束模型，包括荷电状态、充放电功率、充放电状态等约束；",
+      "",
+      "3. 含不确定性的调度模型：考虑到电力市场中的电价、新能源出力、负荷需求均存在显著的不确定性。",
+    ].join("\n");
+
+    const result = analyzeText(text, "official");
+    const headingTexts = result.blocks.filter((b) => b.type === "heading").map((b) => b.text);
+    expect(headingTexts).not.toContain(
+      "1. 储能侧约束：即上述的储能运行约束模型，包括荷电状态、充放电功率、充放电状态等约束；",
+    );
+    expect(result.blocks.filter((b) => b.type === "paragraph").length).toBeGreaterThanOrEqual(2);
+  });
 });

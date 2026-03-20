@@ -11,32 +11,53 @@ function detectMode(text: string, requestedMode: Mode): Exclude<Mode, "auto"> {
   if (requestedMode !== "auto") {
     return requestedMode;
   }
-
   const hitCount = THESIS_HINTS.filter((hint) =>
     text.toUpperCase().includes(hint.toUpperCase()),
   ).length;
   return hitCount >= 2 ? "thesis" : "official";
 }
 
+function shouldDemoteHeading(text: string, level: number): boolean {
+  const t = text.trim();
+  if (!t) return true;
+
+  const hasSentencePunctuation = /[；。！？]/.test(t);
+  const isNumericList = /^\d+[、.]\s*/.test(t) || /^[（(]?\d+[）).、]/.test(t);
+
+  if (isNumericList && t.length > 26) {
+    return true;
+  }
+  if (level === 1 && isNumericList && t.length > 24 && hasSentencePunctuation) {
+    return true;
+  }
+  if (level >= 1 && t.length > 40 && hasSentencePunctuation) {
+    return true;
+  }
+  return false;
+}
+
 function headingLevel(paragraph: string): number | null {
   const p = paragraph.trim();
   if (!p) return null;
 
+  let level: number | null = null;
   if (
     /^(摘要|ABSTRACT|目录|参考文献|结束语|致谢)$/i.test(p) ||
     /^第[0-9一二三四五六七八九十百千]+[章节部分篇]\s*/.test(p) ||
     /^[一二三四五六七八九十]+、\s*/.test(p) ||
     /^\d+[、.]\s+/.test(p)
   ) {
-    return 1;
+    level = 1;
+  } else if (/^\d+\.\d+\s*/.test(p) || /^[（(][0-9一二三四五六七八九十]+[）)]\s*/.test(p)) {
+    level = 2;
+  } else if (/^\d+\.\d+\.\d+\s*/.test(p) || /^\d+、\s*/.test(p)) {
+    level = 3;
   }
-  if (/^\d+\.\d+\s*/.test(p) || /^[（(][0-9一二三四五六七八九十]+[）)]\s*/.test(p)) {
-    return 2;
+
+  if (level !== null && shouldDemoteHeading(p, level)) {
+    return null;
   }
-  if (/^\d+\.\d+\.\d+\s*/.test(p) || /^\d+、\s*/.test(p)) {
-    return 3;
-  }
-  return null;
+  return level;
 }
 
 function isLikelyTitle(paragraph: string): boolean {
@@ -131,6 +152,9 @@ function sanitizeBlocks(blocks: Block[]): Block[] {
 
       if (block.type === "heading") {
         const level = block.level >= 1 && block.level <= 3 ? block.level : 1;
+        if (shouldDemoteHeading(text, level)) {
+          return { type: "paragraph" as const, text, level: 0 };
+        }
         return { type: "heading" as const, text, level };
       }
       if (block.type === "reference") {
