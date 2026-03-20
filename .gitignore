@@ -1,0 +1,13 @@
+node_modules/
+.wrangler/
+dist/
+*.log
+
+# Generated docs
+worker_integration_output.docx
+runtime_test_output.docx
+demo_output*.docx
+
+# Python caches
+__pycache__/
+*.pyc

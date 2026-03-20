@@ -1,0 +1,108 @@
+:root {
+  --bg-a: #f1f8ff;
+  --bg-b: #eefcf5;
+  --card: #ffffff;
+  --line: #d4dfef;
+  --ink: #0f1b2d;
+  --muted: #4a5d73;
+  --brand: #0b67d2;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  color: var(--ink);
+  font-family: "Noto Sans SC", "Microsoft YaHei", sans-serif;
+  background: radial-gradient(circle at 20% 10%, var(--bg-a), transparent 35%),
+    radial-gradient(circle at 80% 20%, var(--bg-b), transparent 30%),
+    #f6f9ff;
+}
+
+.container {
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 24px 16px 36px;
+}
+
+.hero h1 {
+  margin: 0;
+  font-size: 34px;
+}
+
+.hero p {
+  margin: 8px 0 0;
+  color: var(--muted);
+}
+
+.panel {
+  margin-top: 18px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--card);
+  padding: 16px;
+  box-shadow: 0 10px 24px rgba(11, 103, 210, 0.08);
+}
+
+label {
+  display: block;
+  margin: 10px 0 6px;
+  font-weight: 600;
+}
+
+select,
+textarea {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 14px;
+}
+
+textarea {
+  min-height: 260px;
+  resize: vertical;
+}
+
+.actions {
+  margin-top: 12px;
+  display: flex;
+  gap: 10px;
+}
+
+button {
+  border: 0;
+  border-radius: 10px;
+  background: var(--brand);
+  color: #fff;
+  font-weight: 700;
+  padding: 10px 14px;
+  cursor: pointer;
+}
+
+#stats {
+  color: var(--muted);
+}
+
+#preview {
+  margin: 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #f9fbff;
+  padding: 12px;
+  min-height: 160px;
+  white-space: pre-wrap;
+  line-height: 1.65;
+}
+
+@media (max-width: 768px) {
+  .hero h1 {
+    font-size: 26px;
+  }
+
+  .actions {
+    flex-direction: column;
+  }
+}

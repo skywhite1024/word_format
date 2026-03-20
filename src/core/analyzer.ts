@@ -1,0 +1,165 @@
+import type { Block, Mode, StructuredDoc } from "./types";
+
+const SENTENCE_ENDINGS = ["。", "！", "？", "；", ".", "!", "?", ";", ":"];
+const THESIS_HINTS = ["摘要", "ABSTRACT", "目录", "参考文献", "关键词", "致谢"];
+
+function normalizeText(rawText: string): string {
+  return rawText.replace(/\r\n/g, "\n").replace(/\r/g, "\n").trim();
+}
+
+function detectMode(text: string, requestedMode: Mode): Exclude<Mode, "auto"> {
+  if (requestedMode !== "auto") {
+    return requestedMode;
+  }
+
+  const hitCount = THESIS_HINTS.filter((hint) =>
+    text.toUpperCase().includes(hint.toUpperCase()),
+  ).length;
+  return hitCount >= 2 ? "thesis" : "official";
+}
+
+function headingLevel(paragraph: string): number | null {
+  const p = paragraph.trim();
+  if (!p) return null;
+
+  if (
+    /^(摘要|ABSTRACT|目录|参考文献|结束语|致谢)$/i.test(p) ||
+    /^第[0-9一二三四五六七八九十百千]+[章节部分篇]\s*/.test(p) ||
+    /^[一二三四五六七八九十]+、\s*/.test(p) ||
+    /^\d+[、.]\s+/.test(p)
+  ) {
+    return 1;
+  }
+  if (/^\d+\.\d+\s*/.test(p) || /^[（(][0-9一二三四五六七八九十]+[）)]\s*/.test(p)) {
+    return 2;
+  }
+  if (/^\d+\.\d+\.\d+\s*/.test(p) || /^\d+、\s*/.test(p)) {
+    return 3;
+  }
+  return null;
+}
+
+function isLikelyTitle(paragraph: string): boolean {
+  const p = paragraph.trim();
+  if (!p || p.length > 45) return false;
+  if (headingLevel(p) !== null) return false;
+  return !SENTENCE_ENDINGS.some((end) => p.endsWith(end));
+}
+
+function splitParagraphs(text: string): string[] {
+  const lines = text.split("\n");
+  const paragraphs: string[] = [];
+  let buffer = "";
+
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (!line) {
+      if (buffer) {
+        paragraphs.push(buffer);
+        buffer = "";
+      }
+      continue;
+    }
+
+    if (headingLevel(line) !== null) {
+      if (buffer) {
+        paragraphs.push(buffer);
+        buffer = "";
+      }
+      paragraphs.push(line);
+      continue;
+    }
+
+    if (!buffer) {
+      buffer = line;
+      continue;
+    }
+
+    if (SENTENCE_ENDINGS.some((ending) => buffer.endsWith(ending))) {
+      paragraphs.push(buffer);
+      buffer = line;
+    } else {
+      buffer += line;
+    }
+  }
+
+  if (buffer) {
+    paragraphs.push(buffer);
+  }
+
+  return paragraphs;
+}
+
+function looksLikeReference(text: string): boolean {
+  const t = text.trim();
+  return /^\[\d+\]/.test(t) || /^\d+[).、]\s+/.test(t);
+}
+
+function normalizeReferences(blocks: Block[]): Block[] {
+  const output: Block[] = [];
+  let inRefSection = false;
+
+  for (const block of blocks) {
+    if (block.type === "heading" && /^参考文献$/i.test(block.text.trim())) {
+      inRefSection = true;
+      output.push(block);
+      continue;
+    }
+    if (block.type === "heading" && inRefSection) {
+      inRefSection = false;
+    }
+
+    if (inRefSection && block.type === "paragraph" && looksLikeReference(block.text)) {
+      output.push({ ...block, type: "reference", level: 0 });
+    } else {
+      output.push(block);
+    }
+  }
+
+  return output;
+}
+
+export function analyzeText(rawText: string, mode: Mode = "auto"): StructuredDoc {
+  const normalized = normalizeText(rawText);
+  const targetMode = detectMode(normalized, mode);
+  const paragraphs = splitParagraphs(normalized);
+
+  if (paragraphs.length === 0) {
+    return {
+      mode: targetMode,
+      title: "",
+      blocks: [],
+      stats: { paragraphCount: 0, headingCount: 0, referenceCount: 0 },
+    };
+  }
+
+  let title = "";
+  let startIndex = 0;
+  if (isLikelyTitle(paragraphs[0])) {
+    title = paragraphs[0];
+    startIndex = 1;
+  }
+
+  const blocks: Block[] = [];
+  for (const paragraph of paragraphs.slice(startIndex)) {
+    const level = headingLevel(paragraph);
+    if (level !== null) {
+      blocks.push({ type: "heading", text: paragraph, level });
+    } else {
+      blocks.push({ type: "paragraph", text: paragraph, level: 0 });
+    }
+  }
+
+  const enhancedBlocks = targetMode === "thesis" ? normalizeReferences(blocks) : blocks;
+
+  return {
+    mode: targetMode,
+    title,
+    blocks: enhancedBlocks,
+    stats: {
+      paragraphCount: paragraphs.length,
+      headingCount: enhancedBlocks.filter((item) => item.type === "heading").length,
+      referenceCount: enhancedBlocks.filter((item) => item.type === "reference").length,
+    },
+  };
+}

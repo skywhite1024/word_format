@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>自动排版 Worker Demo</title>
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <main class="container">
+      <header class="hero">
+        <h1>自动排版 Worker Demo</h1>
+        <p>输入未经排版文本，自动识别结构并按模板输出正式 Word 文档。</p>
+      </header>
+
+      <section class="panel">
+        <label for="mode">模板策略</label>
+        <select id="mode">
+          <option value="auto">自动识别</option>
+          <option value="official">公文模式</option>
+          <option value="thesis">论文模式</option>
+        </select>
+
+        <label for="inputText">原始文本</label>
+        <textarea id="inputText" placeholder="粘贴待排版文本"></textarea>
+
+        <div class="actions">
+          <button id="formatBtn" type="button">结构识别</button>
+          <button id="downloadBtn" type="button">下载 DOCX</button>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>识别结果</h2>
+        <p id="stats">等待识别...</p>
+        <pre id="preview"></pre>
+      </section>
+    </main>
+    <script src="/app.js" type="module"></script>
+  </body>
+</html>

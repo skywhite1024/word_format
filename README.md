@@ -1,58 +1,70 @@
-# Word 自动排版 Demo（V1）
+# 自动排版 Worker 项目
 
 ## 目标
 
-构建一个最小可运行闭环：
+将“未经排版文本 -> 专业 Word 文档”能力部署到 Cloudflare，支持：
 
-- 前端输入原始文本
-- 后端自动识别标题/小节/正文
-- 自动生成正式文档版式（`.docx`）
+- Worker 化 API（无状态、可托管）
+- 模板策略（公文/论文/自动识别）
+- 目录与参考文献增强
+- 前端静态页面直接调用 API
 
 ## 架构
 
-- 前端：原生 `HTML/CSS/JS`
-- 后端：`Flask`
-- 文档生成：`python-docx`
+- 前端：`public/*` 静态页面
+- API：`src/worker.ts`
+- 核心逻辑：`src/core/*`
+  - `analyzer.ts`：结构识别与模式判断
+  - `docx-builder.ts`：Word 生成
+  - `preview.ts`：预览渲染
 
-流程：
+## 模板策略
 
-1. 用户在页面输入文本。
-2. 前端调用 `/api/format` 获取结构化结果与预览文本。
-3. 前端调用 `/api/format/docx` 下载规范排版后的 Word。
+- `auto`：通过文本特征自动判断是 `official` 还是 `thesis`
+- `official`（公文模式）：
+  - 页边距上/下 2.5cm，左 3.0cm，右 2.0cm
+  - 正文小四宋体，1.5 倍行距，首行缩进 2 字符
+  - 识别章节标题并分级排版
+- `thesis`（论文模式）：
+  - 继承上述版式
+  - 自动插入目录（TOC）
+  - “参考文献”节自动编号与悬挂缩进
 
-## 识别规则（V1）
-
-- 标题识别：首段短文本且非句号结尾，判定为文档标题。
-- 小节识别：
-  - `第一章/第一节`
-  - `一、二、三、...`
-  - `1. / 1.1 / 1.1.1`
-  - `（一）/（1）`
-- 其余段落判定为正文。
-
-## Word 排版规则（参考格式对齐版）
-
-- A4 纸，页边距：上 `2.5cm`，下 `2.5cm`，左 `3.0cm`，右 `2.0cm`
-- 正文：中文 `宋体`、英文 `Times New Roman`，`小四(12pt)`，`1.5 倍行距`，首行缩进 2 字符
-- 文档标题：`小二(18pt)黑体`，居中，上下留空行（近似实现）
-- 一级标题：`三号(16pt)黑体`，居中，上下留空行（近似实现）
-- 二级标题：`小四(12pt)黑体`，左对齐，首行缩进 2 字符
-- 三级标题：`小四(12pt)楷体_GB2312`，左对齐，首行缩进 2 字符
-
-## 运行方式
+## 本地运行
 
 ```bash
-python -m pip install -r requirements.txt
-python app.py
+npm install
+npm run dev
 ```
 
-访问：
+浏览器访问：`http://127.0.0.1:8787`
 
-`http://127.0.0.1:8000`
+## 测试
 
-## 后续建议（V2+）
+单元测试：
 
-- 增加“公文/论文/报告”多模板排版策略
-- 增加可配置规则中心（标题字号、段前段后、目录生成）
-- 增加 OCR 或 LLM 语义分段辅助
-- 增加批量文件处理（txt/md/docx）
+```bash
+npm test
+```
+
+端到端集成测试（会启动本地 wrangler 并请求 API）：
+
+```bash
+npm run test:integration
+```
+
+测试成功后会生成 `worker_integration_output.docx`。
+
+## Cloudflare 部署
+
+1. 登录 Cloudflare，并准备 `wrangler` 权限：
+   - `npx wrangler login`
+2. 部署：
+   - `npx wrangler deploy`
+3. 绑定自定义域名（可选）：
+   - 在 Cloudflare 控制台给 Worker 绑定路由。
+
+## 说明
+
+- 当前仓库仍保留了早期 Python 版本文件（`app.py`、`formatter.py`）用于对照。
+- Cloudflare 托管路径以 Worker 版本为准。
