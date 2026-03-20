@@ -41,17 +41,17 @@ function headingLevel(paragraph: string): number | null {
   if (!p) return null;
 
   let level: number | null = null;
-  if (
+  if (/^\d+\.\d+\.\d+\s*/.test(p) || /^\d+、\s*/.test(p)) {
+    level = 3;
+  } else if (/^\d+\.\d+\s*/.test(p) || /^[（(][0-9一二三四五六七八九十]+[）)]\s*/.test(p)) {
+    level = 2;
+  } else if (
     /^(摘要|ABSTRACT|目录|参考文献|结束语|致谢)$/i.test(p) ||
     /^第[0-9一二三四五六七八九十百千]+[章节部分篇]\s*/.test(p) ||
     /^[一二三四五六七八九十]+、\s*/.test(p) ||
-    /^\d+[、.]\s+/.test(p)
+    /^\d+[、.]\s*/.test(p)
   ) {
     level = 1;
-  } else if (/^\d+\.\d+\s*/.test(p) || /^[（(][0-9一二三四五六七八九十]+[）)]\s*/.test(p)) {
-    level = 2;
-  } else if (/^\d+\.\d+\.\d+\s*/.test(p) || /^\d+、\s*/.test(p)) {
-    level = 3;
   }
 
   if (level !== null && shouldDemoteHeading(p, level)) {

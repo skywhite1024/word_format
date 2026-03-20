@@ -106,10 +106,13 @@ function createPrompt(rawText: string, mode: Mode): string {
     '{"title":"", "mode":"official|thesis", "blocks":[{"type":"heading|paragraph|reference","level":1,"text":""}]}',
     "规则：",
     "1) 只能使用原文中的句子或短语，不允许编造新主题。",
-    "2) 标题层级仅允许 1/2/3，正文为 paragraph，参考文献条目为 reference。",
-    "3) 如果识别到摘要/目录/参考文献/致谢等学术结构，mode 推荐 thesis，否则 official。",
-    `4) 用户请求模式为：${mode}。若不是 auto，请优先遵循用户请求。`,
-    "5) 若无法确定结构，按原文逐段输出 paragraph。",
+    "2) 必须保持原文顺序，不可重排段落。",
+    "3) 标题层级仅允许 1/2/3，正文为 paragraph，参考文献条目为 reference。",
+    "4) 识别标题时，优先识别短标题（一般 <= 26 字）。",
+    "5) 凡是编号句（如 1. / 2. / （1））且内容较长、包含说明性标点（：；。），通常判为 paragraph，不要判为 heading。",
+    "6) 如果识别到摘要/目录/参考文献/致谢等学术结构，mode 推荐 thesis，否则 official。",
+    `7) 用户请求模式为：${mode}。若不是 auto，请优先遵循用户请求。`,
+    "8) 若无法确定结构，按原文逐段输出 paragraph。",
     "",
     "原始文本如下：",
     rawText,
@@ -152,59 +155,73 @@ export async function structureTextWithLlm(
   const modelId = config.modelId ?? "ZhipuAI/GLM-5";
   const timeoutMs = config.timeoutMs ?? 25_000;
 
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort("LLM 请求超时"), timeoutMs);
+  let lastError: unknown = null;
+  const maxAttempts = 2;
 
-  try {
-    const response = await fetch(`${baseUrl}/chat/completions`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${config.apiKey}`,
-      },
-      body: JSON.stringify({
-        model: modelId,
-        temperature: 0.1,
-        messages: [
-          {
-            role: "system",
-            content: "你是结构化文本解析助手，只输出 JSON。",
-          },
-          {
-            role: "user",
-            content: createPrompt(text, mode),
-          },
-        ],
-      }),
-      signal: controller.signal,
-    });
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort("LLM 请求超时"), timeoutMs);
+    try {
+      const response = await fetch(`${baseUrl}/chat/completions`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${config.apiKey}`,
+        },
+        body: JSON.stringify({
+          model: modelId,
+          temperature: 0.1,
+          messages: [
+            {
+              role: "system",
+              content: "你是结构化文本解析助手，只输出 JSON。",
+            },
+            {
+              role: "user",
+              content: createPrompt(text, mode),
+            },
+          ],
+        }),
+        signal: controller.signal,
+      });
 
-    if (!response.ok) {
-      const body = await response.text();
-      throw new Error(`ModelScope 接口失败(${response.status}): ${body.slice(0, 300)}`);
+      if (!response.ok) {
+        const body = await response.text();
+        throw new Error(`ModelScope 接口失败(${response.status}): ${body.slice(0, 300)}`);
+      }
+
+      const data = (await response.json()) as ModelScopeChatResponse;
+      const content = data.choices?.[0]?.message?.content;
+      if (!content) {
+        throw new Error("ModelScope 返回为空。");
+      }
+
+      const payload = safeJsonParse(content);
+      const title = typeof payload.title === "string" ? payload.title : "";
+      const modelMode = normalizeMode(payload.mode, mode);
+      const rawBlocks = Array.isArray(payload.blocks) ? payload.blocks : [];
+      const blocks = rawBlocks
+        .map((item) => normalizeBlock(item))
+        .filter((item): item is Block => item !== null);
+
+      if (blocks.length === 0) {
+        throw new Error("LLM 未返回有效段落结构。");
+      }
+      validateGrounding(blocks, text);
+
+      return composeStructuredDoc(modelMode, title, blocks);
+    } catch (error) {
+      lastError = error;
+      if (attempt === maxAttempts) {
+        break;
+      }
+    } finally {
+      clearTimeout(timer);
     }
-
-    const data = (await response.json()) as ModelScopeChatResponse;
-    const content = data.choices?.[0]?.message?.content;
-    if (!content) {
-      throw new Error("ModelScope 返回为空。");
-    }
-
-    const payload = safeJsonParse(content);
-    const title = typeof payload.title === "string" ? payload.title : "";
-    const modelMode = normalizeMode(payload.mode, mode);
-    const rawBlocks = Array.isArray(payload.blocks) ? payload.blocks : [];
-    const blocks = rawBlocks
-      .map((item) => normalizeBlock(item))
-      .filter((item): item is Block => item !== null);
-
-    if (blocks.length === 0) {
-      throw new Error("LLM 未返回有效段落结构。");
-    }
-    validateGrounding(blocks, text);
-
-    return composeStructuredDoc(modelMode, title, blocks);
-  } finally {
-    clearTimeout(timer);
   }
+
+  if (lastError instanceof Error) {
+    throw lastError;
+  }
+  throw new Error("LLM 调用失败");
 }
