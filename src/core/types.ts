@@ -1,6 +1,6 @@
 export type Mode = "auto" | "official" | "thesis";
 
-export type BlockType = "heading" | "paragraph" | "reference" | "formula";
+export type BlockType = "heading" | "paragraph" | "reference";
 
 export interface Block {
   type: BlockType;
