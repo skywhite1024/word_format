@@ -4,6 +4,7 @@ import {
   FileChild,
   Footer,
   HeadingLevel,
+  LevelFormat,
   LineRuleType,
   Packer,
   PageNumber,
@@ -21,6 +22,7 @@ const FONT_CN_KAI = "楷体_GB2312";
 const FONT_EN = "Times New Roman";
 const COLOR_BLACK = "000000";
 const TWO_CHAR_TWIP = 2 * 210;
+const REFERENCE_NUMBERING_ID = "reference-numbering";
 
 function textRun(
   text: string,
@@ -86,11 +88,15 @@ function headingParagraph(block: Block): Paragraph {
   });
 }
 
-function referenceParagraph(raw: string, index: number): Paragraph {
+function referenceParagraph(raw: string): Paragraph {
   const content = raw.replace(/^\[\d+\]\s*/, "").replace(/^\d+[).、]\s*/, "").trim();
   return new Paragraph({
-    children: [textRun(`[${index}] ${content}`, FONT_CN_KAI, 21)],
+    children: [textRun(content, FONT_CN_KAI, 21)],
     alignment: AlignmentType.LEFT,
+    numbering: {
+      reference: REFERENCE_NUMBERING_ID,
+      level: 0,
+    },
     indent: {
       left: TWO_CHAR_TWIP,
       hanging: TWO_CHAR_TWIP,
@@ -134,15 +140,13 @@ function buildBody(structured: StructuredDoc): FileChild[] {
     paragraphs.push(new Paragraph({ text: "" }));
   }
 
-  let refIdx = 1;
   for (const block of structured.blocks) {
     if (block.type === "heading") {
       paragraphs.push(headingParagraph(block));
       continue;
     }
     if (block.type === "reference") {
-      paragraphs.push(referenceParagraph(block.text, refIdx));
-      refIdx += 1;
+      paragraphs.push(referenceParagraph(block.text));
       continue;
     }
     paragraphs.push(baseParagraph(block.text));
@@ -172,6 +176,21 @@ async function normalizeFirstLineIndentToChars(rawBytes: Uint8Array): Promise<Ui
 
 export async function buildDocx(structured: StructuredDoc): Promise<Uint8Array> {
   const doc = new Document({
+    numbering: {
+      config: [
+        {
+          reference: REFERENCE_NUMBERING_ID,
+          levels: [
+            {
+              level: 0,
+              format: LevelFormat.DECIMAL,
+              text: "[%1]",
+              alignment: AlignmentType.LEFT,
+            },
+          ],
+        },
+      ],
+    },
     sections: [
       {
         properties: {
