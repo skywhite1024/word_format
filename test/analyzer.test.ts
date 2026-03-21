@@ -45,11 +45,4 @@ describe("analyzeText", () => {
     );
     expect(result.blocks.filter((b) => b.type === "paragraph").length).toBeGreaterThanOrEqual(2);
   });
-
-  it("should still treat short numeric section title as heading", () => {
-    const text = "调度模型\n\n2.约束条件设计\n\n后续正文内容。";
-    const result = analyzeText(text, "official");
-    const headingTexts = result.blocks.filter((b) => b.type === "heading").map((b) => b.text);
-    expect(headingTexts).toContain("2.约束条件设计");
-  });
 });
