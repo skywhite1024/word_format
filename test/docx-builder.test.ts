@@ -24,7 +24,8 @@ describe("docx-builder", () => {
 
     const content = xml ?? "";
     expect(content).toContain('w:color w:val="000000"');
-    expect(content).toContain('w:firstLine="420"');
+    expect(content).toContain('w:firstLineChars="200"');
+    expect(content).not.toContain('w:firstLine="420"');
     expect(content).toContain('w:hanging="420"');
   });
 });

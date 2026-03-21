@@ -12,6 +12,7 @@ import {
   TextRun,
   convertMillimetersToTwip,
 } from "docx";
+import JSZip from "jszip";
 import type { Block, StructuredDoc } from "./types";
 
 const FONT_CN_SONG = "宋体";
@@ -150,6 +151,25 @@ function buildBody(structured: StructuredDoc): FileChild[] {
   return paragraphs;
 }
 
+function patchFirstLineIndentToChars(xml: string): string {
+  // Word 中字符缩进 2 字符对应 firstLineChars="200"
+  return xml.replace(/w:firstLine="420"/g, 'w:firstLineChars="200"');
+}
+
+async function normalizeFirstLineIndentToChars(rawBytes: Uint8Array): Promise<Uint8Array> {
+  const zip = await JSZip.loadAsync(rawBytes);
+  const documentXmlFile = zip.file("word/document.xml");
+  if (!documentXmlFile) {
+    return rawBytes;
+  }
+
+  const originalXml = await documentXmlFile.async("string");
+  const patchedXml = patchFirstLineIndentToChars(originalXml);
+  zip.file("word/document.xml", patchedXml);
+
+  return zip.generateAsync({ type: "uint8array" });
+}
+
 export async function buildDocx(structured: StructuredDoc): Promise<Uint8Array> {
   const doc = new Document({
     sections: [
@@ -188,5 +208,6 @@ export async function buildDocx(structured: StructuredDoc): Promise<Uint8Array> 
     ],
   });
 
-  return Packer.toBuffer(doc);
+  const rawBytes = await Packer.toBuffer(doc);
+  return normalizeFirstLineIndentToChars(rawBytes);
 }
