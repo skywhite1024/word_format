@@ -62,10 +62,12 @@ function baseParagraph(text: string): Paragraph {
 }
 
 function headingParagraph(block: Block): Paragraph {
+  const headingText = normalizeHeadingText(block.text, block.level);
+
   if (block.level === 1) {
     return new Paragraph({
       heading: HeadingLevel.HEADING_1,
-      children: [textRun(block.text, FONT_CN_HEI, 32, true)],
+      children: [textRun(headingText, FONT_CN_HEI, 32, true)],
       alignment: AlignmentType.CENTER,
       spacing: { before: 240, after: 240 },
     });
@@ -73,7 +75,7 @@ function headingParagraph(block: Block): Paragraph {
   if (block.level === 2) {
     return new Paragraph({
       heading: HeadingLevel.HEADING_2,
-      children: [textRun(block.text, FONT_CN_HEI, 24, true)],
+      children: [textRun(headingText, FONT_CN_HEI, 24, true)],
       alignment: AlignmentType.LEFT,
       indent: { firstLine: TWO_CHAR_TWIP },
       spacing: { before: 0, after: 0, line: 360, lineRule: LineRuleType.AUTO },
@@ -81,11 +83,32 @@ function headingParagraph(block: Block): Paragraph {
   }
   return new Paragraph({
     heading: HeadingLevel.HEADING_3,
-    children: [textRun(block.text, FONT_CN_KAI, 24, false)],
+    children: [textRun(headingText, FONT_CN_KAI, 24, false)],
     alignment: AlignmentType.LEFT,
     indent: { firstLine: TWO_CHAR_TWIP },
     spacing: { before: 0, after: 0, line: 360, lineRule: LineRuleType.AUTO },
   });
+}
+
+function normalizeHeadingText(text: string, level: number): string {
+  const raw = text.trim();
+  if (!raw) return raw;
+
+  if (level === 1) {
+    const withChapter = raw.replace(
+      /^(第[0-9一二三四五六七八九十百千]+[章节部分篇])\s*/,
+      "$1　",
+    );
+    return withChapter.replace(/^([一二三四五六七八九十]+、)\s*/, "$1　");
+  }
+
+  if (level === 2) {
+    const withNumeric = raw.replace(/^(\d+\.\d+)\s*/, "$1　");
+    return withNumeric.replace(/^([（(][0-9一二三四五六七八九十]+[）)])\s*/, "$1　");
+  }
+
+  const withDecimal = raw.replace(/^(\d+\.\d+\.\d+)\s*/, "$1　");
+  return withDecimal.replace(/^(\d+、)\s*/, "$1　");
 }
 
 function referenceParagraph(raw: string): Paragraph {

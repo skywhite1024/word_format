@@ -21,6 +21,11 @@ function shouldDemoteHeading(text: string, level: number): boolean {
   const t = text.trim();
   if (!t) return true;
 
+  const structuredNumberHeading = /^\d+(?:\.\d+){1,2}\s+/.test(t);
+  if (structuredNumberHeading) {
+    return false;
+  }
+
   const hasSentencePunctuation = /[；。！？]/.test(t);
   const isNumericList = /^\d+[、.]\s*/.test(t) || /^[（(]?\d+[）).、]/.test(t);
 
@@ -48,10 +53,10 @@ function headingLevel(paragraph: string): number | null {
     /^\d+[、.]\s+/.test(p)
   ) {
     level = 1;
-  } else if (/^\d+\.\d+\s*/.test(p) || /^[（(][0-9一二三四五六七八九十]+[）)]\s*/.test(p)) {
-    level = 2;
-  } else if (/^\d+\.\d+\.\d+\s*/.test(p) || /^\d+、\s*/.test(p)) {
+  } else if (/^\d+\.\d+\.\d+\s+/.test(p) || /^\d+、\s*/.test(p)) {
     level = 3;
+  } else if (/^\d+\.\d+\s+/.test(p) || /^[（(][0-9一二三四五六七八九十]+[）)]\s*/.test(p)) {
+    level = 2;
   }
 
   if (level !== null && shouldDemoteHeading(p, level)) {

@@ -45,4 +45,46 @@ describe("analyzeText", () => {
     );
     expect(result.blocks.filter((b) => b.type === "paragraph").length).toBeGreaterThanOrEqual(2);
   });
+
+  it("should classify 2.3.1 as level-3 heading", () => {
+    const text = [
+      "研究标题",
+      "",
+      "2.3 多指灵巧手操作与传统机械臂操作的本质区别",
+      "",
+      "2.3.1 数学维度：从确定性运动学到维度爆炸",
+      "",
+      "这里是正文内容。",
+    ].join("\n");
+
+    const result = analyzeText(text, "thesis");
+    const level3 = result.blocks.find(
+      (b) => b.type === "heading" && b.text.startsWith("2.3.1 "),
+    );
+
+    expect(level3).toBeDefined();
+    expect(level3?.level).toBe(3);
+  });
+
+  it("should recognize long 5.1 and 5.2 headings", () => {
+    const text = [
+      "方案设计",
+      "",
+      "5.1 仿真环境搭建：基于 Isaac Lab 的高保真配置",
+      "",
+      "这里是 5.1 的正文。",
+      "",
+      "5.2 算法改进设计：包含柔顺性约束的复合奖励函数",
+      "",
+      "这里是 5.2 的正文。",
+    ].join("\n");
+
+    const result = analyzeText(text, "thesis");
+    const targetHeadings = result.blocks.filter(
+      (b) => b.type === "heading" && (b.text.startsWith("5.1 ") || b.text.startsWith("5.2 ")),
+    );
+
+    expect(targetHeadings).toHaveLength(2);
+    expect(targetHeadings.every((h) => h.level === 2)).toBe(true);
+  });
 });
