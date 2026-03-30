@@ -140,6 +140,8 @@ describe("analyzeText", () => {
       "",
       "- 列表项",
       "",
+      "---",
+      "",
       "[链接](https://example.com)",
     ].join("\n");
 
@@ -150,5 +152,24 @@ describe("analyzeText", () => {
     expect(cleaned).not.toContain("##");
     expect(cleaned).not.toContain("**");
     expect(cleaned).not.toContain("> 引用行");
+    expect(cleaned).not.toContain("---");
+  });
+
+  it("should detect chapter heading with spaces as level-1 heading", () => {
+    const text = [
+      "论文题目",
+      "",
+      "第 1 章 绪论",
+      "",
+      "正文段落。",
+    ].join("\n");
+
+    const result = analyzeText(text, "thesis");
+    const chapter = result.blocks.find(
+      (block) => block.type === "heading" && block.text.startsWith("第 1 章"),
+    );
+
+    expect(chapter).toBeDefined();
+    expect(chapter?.level).toBe(1);
   });
 });

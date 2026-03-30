@@ -22,6 +22,7 @@ export function sanitizeMarkdownText(rawText: string): string {
   const cleaned = withoutFences
     .replace(/(^|\n)([ \t]{0,3})#{1,6}[ \t]+/g, "$1$2")
     .replace(/(^|\n)[ \t]{0,3}>[ \t]?/g, "$1")
+    .replace(/(^|\n)[ \t]*([-*_])[ \t]*\2[ \t]*\2(?:[ \t]*\2+)?[ \t]*(?=\n|$)/g, "$1")
     .replace(/^([ \t]*[-+*][ \t]+)/gm, "")
     .replace(/\*\*([\s\S]+?)\*\*/g, "$1")
     .replace(/__([\s\S]+?)__/g, "$1")
@@ -85,7 +86,7 @@ function headingLevel(paragraph: string): number | null {
   let level: number | null = null;
   if (
     /^(摘要|ABSTRACT|目录|参考文献|结束语|致谢)$/i.test(p) ||
-    /^第[0-9一二三四五六七八九十百千]+[章节部分篇]\s*/.test(p) ||
+    /^第\s*[0-9一二三四五六七八九十百千]+\s*[章节部分篇]\s*/.test(p) ||
     /^[一二三四五六七八九十]+、\s*/.test(p) ||
     /^\d+\.\s+/.test(p)
   ) {

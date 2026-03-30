@@ -44,10 +44,13 @@ describe("docx-builder", () => {
       mode: "official",
       title: "公式测试",
       blocks: [
-        { type: "paragraph", level: 0, text: "E = m * c^2" },
-        { type: "paragraph", level: 0, text: "E = m * c^2" },
+        { type: "heading", level: 1, text: "第 1 章 绪论" },
+        { type: "paragraph", level: 0, text: "$$R_{\\text{total}} = w_1R_{\\text{task}} + w_2R_{\\text{energy}}$$" },
+        { type: "paragraph", level: 0, text: "$$R_{\\text{total}} = w_1R_{\\text{task}} + w_2R_{\\text{energy}}$$" },
+        { type: "paragraph", level: 0, text: "表 3-2 算法参数对照表。" },
+        { type: "paragraph", level: 0, text: "图 2-1 系统总体架构图。" },
       ],
-      stats: { paragraphCount: 2, headingCount: 0, referenceCount: 0 },
+      stats: { paragraphCount: 4, headingCount: 1, referenceCount: 0 },
     };
 
     const bytes = await buildDocx(structured);
@@ -56,8 +59,12 @@ describe("docx-builder", () => {
     const docContent = documentXml ?? "";
 
     expect(docContent).toContain("<m:oMath>");
-    expect(docContent).toContain("E = m * c^2");
+    expect(docContent).toContain("R_total");
+    expect(docContent).not.toContain("\\text{");
     expect(docContent).toContain("(1)");
     expect(docContent).not.toContain("(2)");
+    expect(docContent).toContain("第 1 章　绪论");
+    expect(docContent).toContain("表1 算法参数对照表");
+    expect(docContent).toContain("图1　系统总体架构图");
   });
 });

@@ -101,7 +101,7 @@ function normalizeHeadingText(text: string, level: number): string {
 
   if (level === 1) {
     const withChapter = raw.replace(
-      /^(第[0-9一二三四五六七八九十百千]+[章节部分篇])\s*/,
+      /^(第\s*[0-9一二三四五六七八九十百千]+\s*[章节部分篇])\s*/,
       "$1　",
     );
     return withChapter.replace(/^([一二三四五六七八九十]+、)\s*/, "$1　");
@@ -149,6 +149,60 @@ function extractEquationText(raw: string): string {
   return t;
 }
 
+function normalizeLatexLikeText(text: string): string {
+  let output = text;
+
+  while (/\\frac\{[^{}]+\}\{[^{}]+\}/.test(output)) {
+    output = output.replace(/\\frac\{([^{}]+)\}\{([^{}]+)\}/g, "($1)/($2)");
+  }
+
+  output = output
+    .replace(/\\text\{([^{}]*)\}/g, "$1")
+    .replace(/\\mathrm\{([^{}]*)\}/g, "$1")
+    .replace(/\\mathbf\{([^{}]*)\}/g, "$1")
+    .replace(/\\left/g, "")
+    .replace(/\\right/g, "")
+    .replace(/\\cdot/g, "·")
+    .replace(/\\times/g, "×")
+    .replace(/\\leq/g, "≤")
+    .replace(/\\geq/g, "≥")
+    .replace(/\\neq/g, "≠")
+    .replace(/\\sum/g, "∑")
+    .replace(/\\int/g, "∫")
+    .replace(/\\sqrt/g, "√")
+    .replace(/\\_/g, "_")
+    .replace(/([A-Za-z0-9)])_\{([^{}]+)\}/g, "$1_$2")
+    .replace(/([A-Za-z0-9)])\^\{([^{}]+)\}/g, "$1^$2")
+    .replace(/[{}]/g, "")
+    .replace(/\s*[：:]\s*$/, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  return output;
+}
+
+function normalizeCaptionTitle(text: string): string {
+  return text.trim().replace(/[。！？；：,.!?]+$/g, "");
+}
+
+function parseTableCaption(raw: string): { title: string } | null {
+  const t = raw.trim();
+  const match = t.match(/^表\s*(?:\d+(?:[-.]\d+)*)?\s*[：:.、]?\s*(.+)$/);
+  if (!match) return null;
+  const title = normalizeCaptionTitle(match[1]);
+  if (!title) return null;
+  return { title };
+}
+
+function parseFigureCaption(raw: string): { title: string } | null {
+  const t = raw.trim();
+  const match = t.match(/^图\s*(?:\d+(?:[-.]\d+)*)?\s*[：:.、]?\s*(.+)$/);
+  if (!match) return null;
+  const title = normalizeCaptionTitle(match[1]);
+  if (!title) return null;
+  return { title };
+}
+
 function isLikelyEquation(raw: string): boolean {
   const text = extractEquationText(raw);
   if (!text) return false;
@@ -170,7 +224,7 @@ function equationParagraph(
   equationIndexByKey: Map<string, number>,
   state: { current: number },
 ): Paragraph {
-  const equationText = extractEquationText(raw);
+  const equationText = normalizeLatexLikeText(extractEquationText(raw));
   const key = normalizeEquationKey(equationText);
   const existing = equationIndexByKey.get(key);
   const equationNumber = existing ?? state.current + 1;
@@ -204,10 +258,38 @@ function equationParagraph(
   });
 }
 
+function tableCaptionParagraph(index: number, title: string): Paragraph {
+  return new Paragraph({
+    alignment: AlignmentType.CENTER,
+    spacing: {
+      before: 120,
+      after: 60,
+      line: 360,
+      lineRule: LineRuleType.AUTO,
+    },
+    children: [textRun(`表${index} ${title}`, FONT_CN_HEI, 21, true)],
+  });
+}
+
+function figureCaptionParagraph(index: number, title: string): Paragraph {
+  return new Paragraph({
+    alignment: AlignmentType.CENTER,
+    spacing: {
+      before: 60,
+      after: 120,
+      line: 360,
+      lineRule: LineRuleType.AUTO,
+    },
+    children: [textRun(`图${index}　${title}`, FONT_CN_HEI, 21, true)],
+  });
+}
+
 function buildBody(structured: StructuredDoc): FileChild[] {
   const paragraphs: FileChild[] = [];
   const equationIndexByKey = new Map<string, number>();
   const equationState = { current: 0 };
+  let tableIndex = 0;
+  let figureIndex = 0;
 
   if (structured.title) {
     paragraphs.push(
@@ -243,6 +325,20 @@ function buildBody(structured: StructuredDoc): FileChild[] {
     }
     if (block.type === "reference") {
       paragraphs.push(referenceParagraph(block.text));
+      continue;
+    }
+
+    const tableCaption = parseTableCaption(block.text);
+    if (tableCaption) {
+      tableIndex += 1;
+      paragraphs.push(tableCaptionParagraph(tableIndex, tableCaption.title));
+      continue;
+    }
+
+    const figureCaption = parseFigureCaption(block.text);
+    if (figureCaption) {
+      figureIndex += 1;
+      paragraphs.push(figureCaptionParagraph(figureIndex, figureCaption.title));
       continue;
     }
 
