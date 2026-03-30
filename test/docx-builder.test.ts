@@ -38,4 +38,26 @@ describe("docx-builder", () => {
     expect(numberingContent).toContain('w:numFmt w:val="decimal"');
     expect(numberingContent).toContain('w:lvlText w:val="[%1]"');
   });
+
+  it("should render equations as editable math with continuous numbering", async () => {
+    const structured: StructuredDoc = {
+      mode: "official",
+      title: "公式测试",
+      blocks: [
+        { type: "paragraph", level: 0, text: "E = m * c^2" },
+        { type: "paragraph", level: 0, text: "E = m * c^2" },
+      ],
+      stats: { paragraphCount: 2, headingCount: 0, referenceCount: 0 },
+    };
+
+    const bytes = await buildDocx(structured);
+    const zip = await JSZip.loadAsync(bytes);
+    const documentXml = await zip.file("word/document.xml")?.async("string");
+    const docContent = documentXml ?? "";
+
+    expect(docContent).toContain("<m:oMath>");
+    expect(docContent).toContain("E = m * c^2");
+    expect(docContent).toContain("(1)");
+    expect(docContent).not.toContain("(2)");
+  });
 });

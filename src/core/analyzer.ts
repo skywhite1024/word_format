@@ -3,8 +3,41 @@ import type { Block, Mode, StructuredDoc } from "./types";
 const SENTENCE_ENDINGS = ["。", "！", "？", "；", "：", ".", "!", "?", ";", ":"];
 const THESIS_HINTS = ["摘要", "ABSTRACT", "目录", "参考文献", "关键词", "致谢"];
 
+function stripCitationArtifacts(text: string): string {
+  return text
+    .replace(/\[cite_start\]/gi, "")
+    .replace(/\[cite_end\]/gi, "")
+    .replace(/\[source_start\]/gi, "")
+    .replace(/\[source_end\]/gi, "")
+    .replace(/\[(?:cite|source)\s*:\s*[^\]]*?\]/gi, "")
+    .replace(/\(\s*\)/g, "")
+    .replace(/（\s*）/g, "")
+    .replace(/\n{3,}/g, "\n\n");
+}
+
+export function sanitizeMarkdownText(rawText: string): string {
+  const unified = rawText.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  const withoutFences = unified.replace(/^```[\w-]*\s*$/gm, "");
+
+  const cleaned = withoutFences
+    .replace(/(^|\n)([ \t]{0,3})#{1,6}[ \t]+/g, "$1$2")
+    .replace(/(^|\n)[ \t]{0,3}>[ \t]?/g, "$1")
+    .replace(/^([ \t]*[-+*][ \t]+)/gm, "")
+    .replace(/\*\*([\s\S]+?)\*\*/g, "$1")
+    .replace(/__([\s\S]+?)__/g, "$1")
+    .replace(/~~([\s\S]+?)~~/g, "$1")
+    .replace(/`([^`\n]+)`/g, "$1")
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, "$1 ($2)")
+    .replace(/!\[([^\]]*)\]\(([^)]+)\)/g, "$1")
+    .replace(/(^|[\s(（“"'‘])\*([^*\n]+?)\*(?=([\s)）”"'’，。！？；：,.;!?]|$))/g, "$1$2")
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/[ \t]+\n/g, "\n");
+
+  return stripCitationArtifacts(cleaned).trim();
+}
+
 function normalizeText(rawText: string): string {
-  return rawText.replace(/\r\n/g, "\n").replace(/\r/g, "\n").trim();
+  return sanitizeMarkdownText(rawText);
 }
 
 function detectMode(text: string, requestedMode: Mode): Exclude<Mode, "auto"> {

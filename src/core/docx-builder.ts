@@ -6,9 +6,14 @@ import {
   HeadingLevel,
   LevelFormat,
   LineRuleType,
+  Math,
+  MathRun,
   Packer,
   PageNumber,
   Paragraph,
+  Tab,
+  TabStopPosition,
+  TabStopType,
   TableOfContents,
   TextRun,
   convertMillimetersToTwip,
@@ -133,8 +138,76 @@ function referenceParagraph(raw: string): Paragraph {
   });
 }
 
+function extractEquationText(raw: string): string {
+  const t = raw.trim();
+  const blockMath = t.match(/^\$\$([\s\S]+)\$\$$/);
+  if (blockMath) return blockMath[1].trim();
+
+  const inlineMath = t.match(/^\$([^\n]+)\$$/);
+  if (inlineMath) return inlineMath[1].trim();
+
+  return t;
+}
+
+function isLikelyEquation(raw: string): boolean {
+  const text = extractEquationText(raw);
+  if (!text) return false;
+  if (text.length > 180) return false;
+  if (/[。！？；：]/.test(text)) return false;
+
+  const hasMathKeyword = /\\frac|\\sum|\\int|\\sqrt|∑|∫|√/.test(text);
+  const hasEquationOperator = /[=<>≤≥]/.test(text);
+  const hasMathContext = /[A-Za-zα-ωΑ-Ω0-9]/.test(text) && /[+\-*/^=<>≤≥×÷]/.test(text);
+  return hasMathKeyword || (hasEquationOperator && hasMathContext);
+}
+
+function normalizeEquationKey(text: string): string {
+  return text.replace(/\s+/g, "").trim();
+}
+
+function equationParagraph(
+  raw: string,
+  equationIndexByKey: Map<string, number>,
+  state: { current: number },
+): Paragraph {
+  const equationText = extractEquationText(raw);
+  const key = normalizeEquationKey(equationText);
+  const existing = equationIndexByKey.get(key);
+  const equationNumber = existing ?? state.current + 1;
+  if (existing === undefined) {
+    state.current = equationNumber;
+    equationIndexByKey.set(key, equationNumber);
+  }
+
+  return new Paragraph({
+    alignment: AlignmentType.LEFT,
+    indent: { firstLine: 0 },
+    spacing: {
+      before: 120,
+      after: 120,
+      line: 360,
+      lineRule: LineRuleType.AUTO,
+    },
+    tabStops: [
+      {
+        type: TabStopType.RIGHT,
+        position: TabStopPosition.MAX,
+      },
+    ],
+    children: [
+      new Math({
+        children: [new MathRun(equationText)],
+      }),
+      new TextRun({ children: [new Tab()] }),
+      textRun(`(${equationNumber})`, FONT_CN_SONG, 21),
+    ],
+  });
+}
+
 function buildBody(structured: StructuredDoc): FileChild[] {
   const paragraphs: FileChild[] = [];
+  const equationIndexByKey = new Map<string, number>();
+  const equationState = { current: 0 };
 
   if (structured.title) {
     paragraphs.push(
@@ -172,6 +245,12 @@ function buildBody(structured: StructuredDoc): FileChild[] {
       paragraphs.push(referenceParagraph(block.text));
       continue;
     }
+
+    if (isLikelyEquation(block.text)) {
+      paragraphs.push(equationParagraph(block.text, equationIndexByKey, equationState));
+      continue;
+    }
+
     paragraphs.push(baseParagraph(block.text));
   }
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { analyzeText } from "../src/core/analyzer";
+import { analyzeText, sanitizeMarkdownText } from "../src/core/analyzer";
 
 describe("analyzeText", () => {
   it("should detect thesis mode and references", () => {
@@ -128,5 +128,27 @@ describe("analyzeText", () => {
     expect(itemBlocks).toHaveLength(3);
     expect(itemBlocks.every((b) => b.type === "paragraph")).toBe(true);
     expect(result.blocks.some((b) => b.type === "heading" && /^\d+\.\s+/.test(b.text))).toBe(false);
+  });
+
+  it("should sanitize markdown markers from pasted text", () => {
+    const raw = [
+      "## 标题",
+      "",
+      "**加粗内容** 和 *强调内容*",
+      "",
+      "> 引用行",
+      "",
+      "- 列表项",
+      "",
+      "[链接](https://example.com)",
+    ].join("\n");
+
+    const cleaned = sanitizeMarkdownText(raw);
+    expect(cleaned).toContain("标题");
+    expect(cleaned).toContain("加粗内容 和 强调内容");
+    expect(cleaned).toContain("链接 (https://example.com)");
+    expect(cleaned).not.toContain("##");
+    expect(cleaned).not.toContain("**");
+    expect(cleaned).not.toContain("> 引用行");
   });
 });

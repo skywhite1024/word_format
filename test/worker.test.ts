@@ -44,4 +44,26 @@ describe("worker api", () => {
     const bytes = new Uint8Array(await response.arrayBuffer());
     expect(bytes.byteLength).toBeGreaterThan(2000);
   });
+
+  it("should sanitize markdown input before analysis", async () => {
+    const request = new Request("https://example.com/api/format", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        mode: "official",
+        useLlm: false,
+        text: "## 测试标题\n\n**一、章节**\n\n- 正文内容",
+      }),
+    });
+
+    const response = await worker.fetch(request, {
+      ASSETS: { fetch: async () => new Response("not found", { status: 404 }) },
+    } as any);
+
+    expect(response.status).toBe(200);
+    const data = (await response.json()) as any;
+    expect(data.structured.title).toBe("测试标题");
+    expect(data.previewText).not.toContain("##");
+    expect(data.previewText).not.toContain("**");
+  });
 });

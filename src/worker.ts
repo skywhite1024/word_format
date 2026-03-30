@@ -1,4 +1,4 @@
-import { analyzeText } from "./core/analyzer";
+import { analyzeText, sanitizeMarkdownText } from "./core/analyzer";
 import { buildDocx } from "./core/docx-builder";
 import { structureTextWithLlm } from "./core/llm-structurer";
 import { renderPreview } from "./core/preview";
@@ -54,7 +54,8 @@ async function parsePayload(request: Request): Promise<RequestPayload | null> {
       mode?: unknown;
       useLlm?: unknown;
     };
-    const text = typeof payload.text === "string" ? payload.text : "";
+    const rawText = typeof payload.text === "string" ? payload.text : "";
+    const text = sanitizeMarkdownText(rawText);
     if (!text.trim()) {
       return null;
     }
