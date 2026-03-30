@@ -87,4 +87,25 @@ describe("analyzeText", () => {
     expect(targetHeadings).toHaveLength(2);
     expect(targetHeadings.every((h) => h.level === 2)).toBe(true);
   });
+
+  it("should keep 1、2、3、 as paragraph items and normalize to parenthesized format", () => {
+    const text = [
+      "第四章 存在的主要技术与非技术问题",
+      "",
+      "4.1 技术难点分析",
+      "",
+      "1、极高维状态与动作空间的探索效率陷阱",
+      "2、接触不稳定导致的奖励稀疏与语义陷阱",
+      "3、Sim2Real 过程中的物理参数失真与柔顺建模难题",
+    ].join("\n");
+
+    const result = analyzeText(text, "thesis");
+    const itemBlocks = result.blocks.filter(
+      (b) => b.text.startsWith("（1）") || b.text.startsWith("（2）") || b.text.startsWith("（3）"),
+    );
+
+    expect(itemBlocks).toHaveLength(3);
+    expect(itemBlocks.every((b) => b.type === "paragraph")).toBe(true);
+    expect(result.blocks.some((b) => b.type === "heading" && /^\d+、/.test(b.text))).toBe(false);
+  });
 });

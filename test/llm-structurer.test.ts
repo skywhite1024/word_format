@@ -50,4 +50,46 @@ describe("structureTextWithLlm", () => {
       }),
     ).rejects.toThrow("未配置 ModelScope API Key");
   });
+
+  it("should convert 1、 item to paragraph with parenthesized index", async () => {
+    const mockFetch = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  title: "测试标题",
+                  mode: "thesis",
+                  blocks: [
+                    { type: "heading", level: 2, text: "5.1 仿真环境搭建" },
+                    { type: "heading", level: 3, text: "1、资产与运动学" },
+                  ],
+                }),
+              },
+            },
+          ],
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+
+    const oldFetch = globalThis.fetch;
+    vi.stubGlobal("fetch", mockFetch);
+    try {
+      const result = await structureTextWithLlm(
+        "5.1 仿真环境搭建\n\n1、资产与运动学",
+        "thesis",
+        {
+          apiKey: "mock-key",
+        },
+      );
+
+      const item = result.blocks.find((block) => block.text.startsWith("（1）"));
+      expect(item).toBeDefined();
+      expect(item?.type).toBe("paragraph");
+    } finally {
+      vi.stubGlobal("fetch", oldFetch);
+    }
+  });
 });

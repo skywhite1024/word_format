@@ -33,6 +33,7 @@
 ## 3. API 行为速览
 
 ### `POST /api/format`
+
 输入：
 
 ```json
@@ -46,6 +47,7 @@
 输出：结构化结果 + 预览文本 + 引擎元信息。
 
 ### `POST /api/format/docx`
+
 输入同上，输出 `.docx` 二进制流。响应头包含：
 
 - `X-Format-Engine`：`llm` 或 `rule`

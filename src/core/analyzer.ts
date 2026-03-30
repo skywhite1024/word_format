@@ -21,6 +21,10 @@ function shouldDemoteHeading(text: string, level: number): boolean {
   const t = text.trim();
   if (!t) return true;
 
+  if (/^\d+、\s*/.test(t)) {
+    return true;
+  }
+
   const structuredNumberHeading = /^\d+(?:\.\d+){1,2}\s+/.test(t);
   if (structuredNumberHeading) {
     return false;
@@ -50,10 +54,10 @@ function headingLevel(paragraph: string): number | null {
     /^(摘要|ABSTRACT|目录|参考文献|结束语|致谢)$/i.test(p) ||
     /^第[0-9一二三四五六七八九十百千]+[章节部分篇]\s*/.test(p) ||
     /^[一二三四五六七八九十]+、\s*/.test(p) ||
-    /^\d+[、.]\s+/.test(p)
+    /^\d+\.\s+/.test(p)
   ) {
     level = 1;
-  } else if (/^\d+\.\d+\.\d+\s+/.test(p) || /^\d+、\s*/.test(p)) {
+  } else if (/^\d+\.\d+\.\d+\s+/.test(p)) {
     level = 3;
   } else if (/^\d+\.\d+\s+/.test(p) || /^[（(][0-9一二三四五六七八九十]+[）)]\s*/.test(p)) {
     level = 2;
@@ -87,7 +91,7 @@ function splitParagraphs(text: string): string[] {
       continue;
     }
 
-    if (headingLevel(line) !== null) {
+    if (headingLevel(line) !== null || /^\d+、\s*/.test(line)) {
       if (buffer) {
         paragraphs.push(buffer);
         buffer = "";
@@ -149,6 +153,16 @@ function toSafeMode(mode: Mode): Exclude<Mode, "auto"> {
   return mode === "auto" ? "official" : mode;
 }
 
+function normalizeSubItemText(text: string): string {
+  const t = text.trim();
+  const match = t.match(/^(\d+)、\s*(.*)$/);
+  if (!match) return t;
+
+  const index = Number.parseInt(match[1], 10);
+  if (!Number.isFinite(index) || index <= 0) return t;
+  return `（${index}）${match[2].trim()}`;
+}
+
 function sanitizeBlocks(blocks: Block[]): Block[] {
   return blocks
     .map((block) => {
@@ -158,14 +172,14 @@ function sanitizeBlocks(blocks: Block[]): Block[] {
       if (block.type === "heading") {
         const level = block.level >= 1 && block.level <= 3 ? block.level : 1;
         if (shouldDemoteHeading(text, level)) {
-          return { type: "paragraph" as const, text, level: 0 };
+          return { type: "paragraph" as const, text: normalizeSubItemText(text), level: 0 };
         }
         return { type: "heading" as const, text, level };
       }
       if (block.type === "reference") {
         return { type: "reference" as const, text, level: 0 };
       }
-      return { type: "paragraph" as const, text, level: 0 };
+      return { type: "paragraph" as const, text: normalizeSubItemText(text), level: 0 };
     })
     .filter((item): item is Block => item !== null);
 }
