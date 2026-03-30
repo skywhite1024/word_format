@@ -108,4 +108,25 @@ describe("analyzeText", () => {
     expect(itemBlocks.every((b) => b.type === "paragraph")).toBe(true);
     expect(result.blocks.some((b) => b.type === "heading" && /^\d+、/.test(b.text))).toBe(false);
   });
+
+  it("should convert 1.2.3. items under level-1/2 headings to paragraph sub-items", () => {
+    const text = [
+      "二、概述与研究背景",
+      "",
+      "2.4 非结构化复杂环境下的交互痛点",
+      "",
+      "1. 不可消除的感知误差与刚性碰撞灾难。",
+      "2. 目标物体的脆弱性与物理属性盲盒效应。",
+      "3. 复杂接触状态带来的实时控制困难。",
+    ].join("\n");
+
+    const result = analyzeText(text, "thesis");
+    const itemBlocks = result.blocks.filter(
+      (b) => b.text.startsWith("（1）") || b.text.startsWith("（2）") || b.text.startsWith("（3）"),
+    );
+
+    expect(itemBlocks).toHaveLength(3);
+    expect(itemBlocks.every((b) => b.type === "paragraph")).toBe(true);
+    expect(result.blocks.some((b) => b.type === "heading" && /^\d+\.\s+/.test(b.text))).toBe(false);
+  });
 });

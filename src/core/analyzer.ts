@@ -21,7 +21,7 @@ function shouldDemoteHeading(text: string, level: number): boolean {
   const t = text.trim();
   if (!t) return true;
 
-  if (/^\d+、\s*/.test(t)) {
+  if (/^\d+、\s*/.test(t) || /^\d+[.．]\s+/.test(t)) {
     return true;
   }
 
@@ -91,7 +91,7 @@ function splitParagraphs(text: string): string[] {
       continue;
     }
 
-    if (headingLevel(line) !== null || /^\d+、\s*/.test(line)) {
+    if (headingLevel(line) !== null || /^\d+、\s*/.test(line) || /^\d+[.．]\s+/.test(line)) {
       if (buffer) {
         paragraphs.push(buffer);
         buffer = "";
@@ -155,7 +155,7 @@ function toSafeMode(mode: Mode): Exclude<Mode, "auto"> {
 
 function normalizeSubItemText(text: string): string {
   const t = text.trim();
-  const match = t.match(/^(\d+)、\s*(.*)$/);
+  const match = t.match(/^(\d+)(?:、\s*|[.．]\s+)(.*)$/);
   if (!match) return t;
 
   const index = Number.parseInt(match[1], 10);

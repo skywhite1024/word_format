@@ -1,88 +1,133 @@
-<div align="center">
+# Text Word Format Worker
 
-# 📄 Auto-Format Text to Word Worker
+将原始中文文本智能解析为结构化文档，并导出符合公文/论文规范的 `.docx`。项目基于 **Cloudflare Workers + TypeScript + docx**，支持规则引擎与 LLM 结构化双路径。
 
-**基于 Cloudflare Worker 与大模型的智能文本排版引擎**
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![Cloudflare Workers](https://img.shields.io/badge/Cloudflare-Workers-F38020?logo=cloudflare&logoColor=white)](https://workers.cloudflare.com/)
+[![Vitest](https://img.shields.io/badge/Test-Vitest-6E9F18?logo=vitest&logoColor=white)](https://vitest.dev/)
 
-[![Cloudflare Workers](https://img.shields.io/badge/Cloudflare_Workers-F38020?style=for-the-badge&logo=cloudflare&logoColor=white)](https://workers.cloudflare.com/)
-[![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![ModelScope](https://img.shields.io/badge/ModelScope_LLM-4A2B8D?style=for-the-badge)](https://modelscope.cn/)
+## 功能特性
 
-<br>
-</div>
+- 支持 `official`、`thesis`、`auto` 三种模式。
+- 规则引擎与 LLM（ModelScope）自动回退机制。
+- 自动识别标题层级（一级/二级/三级）与参考文献区块。
+- 自动将正文分项 `1、`/`1.` 规范为 `（1）`（避免误判为四级标题）。
+- 导出 `.docx` 时应用规范字体、页边距、行距、目录（thesis）。
 
-本项目将“自然文本转专业排版 Word 文档”的能力部署在云端节点 [Cloudflare Workers](https://workers.cloudflare.com/) 上。借助轻量级、无状态的网络 API 与**大模型 (LLM) 智能结构分析**功能，提供开箱即用的智能化公文及论文排版支持。
+## 可视化架构
 
-## ✨ 核心能力 & 特性
+```mermaid
+flowchart LR
+    A[前端页面 public/] --> B[/api/format]
+    A --> C[/api/format/docx]
+    B --> D[worker.ts]
+    C --> D
+    D --> E{useLlm && API Key}
+    E -- 是 --> F[llm-structurer.ts]
+    E -- 否/失败 --> G[analyzer.ts]
+    F --> H[StructuredDoc]
+    G --> H
+    H --> I[preview.ts]
+    H --> J[docx-builder.ts]
+    J --> K[DOCX 二进制]
+```
 
-- ⚡️ **边缘计算部署**：完全基于 Cloudflare Workers 构建的服务端入口，零冷启动。
-- 🧠 **大模型智能识别**：深度集成 ModelScope 模型接口（默认配置 `ZhipuAI/GLM-5`），自感知、自拆分文本结构，并带有内置的自动回退容错降级机制。
-- 🎨 **多重内置排版策略**：
-  - `official` _(公文模式)_：严格遵循公文页边距约束（上/下 2.5cm，左 3.0cm，右 2.0cm），自动配置首行缩进（2 字符）并应用“小四宋体、1.5 倍行距”等样式。
-  - `thesis` _(论文模式)_：自动插入目录（TOC），参考文献自动补充编号并设置完美悬挂缩进。
-  - `auto` _(动态智推)_：利用规则或 LLM 自动将文档分类并派发为最合适的策略。
+## 处理流程
 
-## 📁 项目架构
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant W as Worker
+    participant R as Rule Engine
+    participant L as LLM
+    participant D as DOCX Builder
+    U->>W: POST /api/format or /api/format/docx
+    W->>W: 参数清洗(mode/useLlm/text)
+    alt 使用 LLM 且可用
+      W->>L: 结构化请求
+      L-->>W: blocks + mode + title
+    else 规则引擎或回退
+      W->>R: analyzeText()
+      R-->>W: StructuredDoc
+    end
+    opt 预览
+      W-->>U: previewText + structured + meta
+    end
+    opt 下载 docx
+      W->>D: buildDocx(StructuredDoc)
+      D-->>W: Uint8Array
+      W-->>U: application/vnd.openxmlformats-officedocument.wordprocessingml.document
+    end
+```
+
+## 项目结构
 
 ```text
 .
-├── public/                 # 前端可视化交互与静态演示页面
+├── public/                    # 前端页面与静态资源
 ├── src/
-│   ├── worker.ts           # Cloudflare Worker API 网络入口点
-│   ├── core/
-│   │   ├── analyzer.ts     # 基准规则分析引擎
-│   │   ├── llm-structurer.ts # 大语言模型结构化转换映射服务
-│   │   └── docx-builder.ts # DOCX 文档文件流自动构建核心
-├── test/                   # 独立规则单元测试
-├── scripts/
-│   └── integration-test.ts # 端到端集成测试验证脚本
-├── package.json            # Node 依赖描述文件
-└── wrangler.toml           # Cloudflare Worker 全局配置声明
+│   ├── worker.ts              # Worker API 入口
+│   └── core/
+│       ├── analyzer.ts        # 规则分析与标题分级
+│       ├── llm-structurer.ts  # LLM 结构化与校验
+│       ├── docx-builder.ts    # DOCX 样式与构建
+│       ├── preview.ts         # 预览文本渲染
+│       └── types.ts           # 类型定义
+├── test/                      # 单元测试
+├── scripts/integration-test.ts
+├── AGENT.md                   # 代理协作规范
+└── wrangler.toml              # Worker 配置
 ```
 
-> **💡 历史兼容说明**：仓库内保留了早期基于 Python 开发的原型实现文件（`app.py`、`formatter.py`）仅供开发对比，实际基于云函数的应用均通过 TypeScript 构建。
+> 仓库保留了 Python 原型（`app.py`、`formatter.py`）用于历史对照，当前主线实现为 TypeScript Worker。
 
----
+## 快速开始（Windows `cmd`）
 
-## 🚀 快速上手与本地测试
-
-通过以下命令安装必要依赖并在本地启动一键开发测试服务器：
-
-```bash
-# 全局安装项目依赖
+```bat
 npm install
-
-# 本地启动 Worker 模拟运行环境
 npm run dev
 ```
 
-成功启动后，可以访问前端静态演示界面：  
-👉 **[http://127.0.0.1:8787](http://127.0.0.1:8787)**
+启动后访问：`http://127.0.0.1:8787`
 
----
+## API 示例
 
-## 🛡️ 质量保证与自动化测试
+### `POST /api/format`
 
-项目集成了端到端测试链路与类型分析防护：
+请求体：
 
-```bash
-# 1. 运行独立的 TypeScript 类型检查
-npm run build:check
-
-# 2. 执行核心引擎单元测试
-npm test
-
-# 3. 运行端到端模拟集成测试
-npm run test:integration
+```json
+{
+  "text": "你的原始文本",
+  "mode": "auto",
+  "useLlm": true
+}
 ```
 
-🌟 _提示：集成测试验证成功完成后，会在工程目录顺势生成 `worker_integration_output.docx` 结构化参考对照文件。_
+返回：
 
----
+- `structured`：结构化文档对象
+- `previewText`：预览文本
+- `meta.engine`：`llm` 或 `rule`
+- `meta.fallbackReason`：LLM 回退原因（可空）
 
-## ⚙️ 环境参数配置
+### `POST /api/format/docx`
 
-利用 Cloudflare `wrangler.toml` 文件进行环境变量声明管理。默认自带的模型推理参数如下：
+同样请求体，返回 `.docx` 二进制流；响应头包含：
+
+- `X-Format-Engine`
+- `X-Format-Fallback`
+
+## 标题与分项规则（当前实现）
+
+- 一级标题：如 `一、`、`第一章`。
+- 二级标题：如 `2.1`。
+- 三级标题：如 `2.3.1`。
+- 正文分项：`1、`/`2、`/`3、` 与 `1.`/`2.`/`3.` 自动转为 `（1）`/`（2）`/`（3）`，并保持为正文段落（非标题）。
+
+## 环境变量
+
+`wrangler.toml` 中默认变量：
 
 ```toml
 MODELSCOPE_BASE_URL = "https://api-inference.modelscope.cn/v1"
@@ -90,30 +135,28 @@ MODELSCOPE_MODEL_ID = "ZhipuAI/GLM-5"
 MODELSCOPE_TIMEOUT_MS = "60000"
 ```
 
-### 接入大模型 API 密钥
+设置 LLM 密钥（不要写入仓库）：
 
-> ⚠️ **强烈禁止将密钥明文硬编码提交到 Git 仓库。**
-
-部署生产前或在开发环境下，需通过 `wrangler` CLI 控制台将环境变量绑定为安全的密文凭据：
-
-```bash
+```bat
 npx wrangler secret put MODELSCOPE_API_KEY
 ```
 
-接下来根据终端要求提示，粘贴你从 ModelScope 申请获得的 API Key。
+## 测试与质量保障
 
----
+```bat
+npm run build:check
+npm test
+npm run test:integration
+```
 
-## 🌐 一键下发部署
+## 部署
 
-当你配置完毕环境后，可以直接把当前微服务发布上线：
-
-```bash
+```bat
 npx wrangler deploy
 ```
 
-<br>
+## 开发约定
 
-<div align="center">
-  <i>构建属于你的智能排版助理 🖋️ —— 由 Cloudflare & 大模型驱动。</i>
-</div>
+- 详细代理协作规范见 `AGENT.md`。
+- 新增识别规则时，请同步补充 `test/*.test.ts`。
+- 修改输出格式时，建议用 `测试案例.txt` 做回归闭环。 

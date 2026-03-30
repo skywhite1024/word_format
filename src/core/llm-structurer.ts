@@ -81,7 +81,7 @@ function normalizeMode(mode: unknown, fallback: Mode): Mode {
 
 function normalizeSubItemText(text: string): string {
   const t = text.trim();
-  const match = t.match(/^(\d+)、\s*(.*)$/);
+  const match = t.match(/^(\d+)(?:、\s*|[.．]\s+)(.*)$/);
   if (!match) return t;
 
   const index = Number.parseInt(match[1], 10);
@@ -97,7 +97,7 @@ function normalizeBlock(raw: unknown): Block | null {
 
   const type = candidate.type;
   if (type === "heading") {
-    if (/^\d+、\s*/.test(text)) {
+    if (/^\d+、\s*/.test(text) || /^\d+[.．]\s+/.test(text)) {
       return { type: "paragraph", text: normalizeSubItemText(text), level: 0 };
     }
     const parsedLevel = Number(candidate.level);
@@ -123,7 +123,7 @@ function createPrompt(rawText: string, mode: Mode): string {
     "2.1) 编号层级强约束：`第一章`/`一、`等为 level=1；`2.1 ` 为 level=2；`2.3.1 ` 为 level=3。",
     "2.2) 对 `5.1`、`5.2`、`3.4` 这类小节编号，不要误判为正文，优先识别为 heading level=2。",
     "2.3) 若标题较长但具备明确编号结构，仍应保持 heading，不要降级为 paragraph。",
-    "2.4) `1、` `2、` `3、` 这类分项一律输出为 paragraph，不得输出 heading；并改写为 `（1）` `（2）` `（3）` 前缀。",
+    "2.4) `1、`/`2、`/`3、` 与 `1.`/`2.`/`3.` 这类分项一律输出为 paragraph，不得输出 heading；并改写为 `（1）` `（2）` `（3）` 前缀。",
     "3) 如果识别到摘要/目录/参考文献/致谢等学术结构，mode 推荐 thesis，否则 official。",
     `4) 用户请求模式为：${mode}。若不是 auto，请优先遵循用户请求。`,
     "5) 若无法确定结构，按原文逐段输出 paragraph。",
@@ -142,6 +142,10 @@ function toSourceCompatibleText(text: string): string {
   return text.replace(/^（(\d+)）/, "$1、");
 }
 
+function toSourceCompatibleTextDot(text: string): string {
+  return text.replace(/^（(\d+)）/, "$1.");
+}
+
 function validateGrounding(blocks: Block[], inputText: string): void {
   const source = compactText(inputText);
   if (!source) return;
@@ -150,8 +154,14 @@ function validateGrounding(blocks: Block[], inputText: string): void {
   for (const block of blocks) {
     const t = compactText(block.text);
     if (!t) continue;
-    const sourceCompatible = compactText(toSourceCompatibleText(block.text));
-    if (t.length <= 6 || source.includes(t) || source.includes(sourceCompatible)) {
+    const sourceCompatibleDunhao = compactText(toSourceCompatibleText(block.text));
+    const sourceCompatibleDot = compactText(toSourceCompatibleTextDot(block.text));
+    if (
+      t.length <= 6 ||
+      source.includes(t) ||
+      source.includes(sourceCompatibleDunhao) ||
+      source.includes(sourceCompatibleDot)
+    ) {
       groundedCount += 1;
     }
   }

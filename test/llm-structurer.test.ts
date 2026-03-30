@@ -51,7 +51,7 @@ describe("structureTextWithLlm", () => {
     ).rejects.toThrow("未配置 ModelScope API Key");
   });
 
-  it("should convert 1、 item to paragraph with parenthesized index", async () => {
+  it("should convert 1、 and 2. items to paragraph with parenthesized index", async () => {
     const mockFetch = vi.fn().mockResolvedValue(
       new Response(
         JSON.stringify({
@@ -64,6 +64,7 @@ describe("structureTextWithLlm", () => {
                   blocks: [
                     { type: "heading", level: 2, text: "5.1 仿真环境搭建" },
                     { type: "heading", level: 3, text: "1、资产与运动学" },
+                    { type: "heading", level: 3, text: "2. 驱动与柔顺性" },
                   ],
                 }),
               },
@@ -78,16 +79,19 @@ describe("structureTextWithLlm", () => {
     vi.stubGlobal("fetch", mockFetch);
     try {
       const result = await structureTextWithLlm(
-        "5.1 仿真环境搭建\n\n1、资产与运动学",
+        "5.1 仿真环境搭建\n\n1、资产与运动学\n2. 驱动与柔顺性",
         "thesis",
         {
           apiKey: "mock-key",
         },
       );
 
-      const item = result.blocks.find((block) => block.text.startsWith("（1）"));
-      expect(item).toBeDefined();
-      expect(item?.type).toBe("paragraph");
+      const item1 = result.blocks.find((block) => block.text.startsWith("（1）"));
+      const item2 = result.blocks.find((block) => block.text.startsWith("（2）"));
+      expect(item1).toBeDefined();
+      expect(item1?.type).toBe("paragraph");
+      expect(item2).toBeDefined();
+      expect(item2?.type).toBe("paragraph");
     } finally {
       vi.stubGlobal("fetch", oldFetch);
     }
