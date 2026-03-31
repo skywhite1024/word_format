@@ -63,11 +63,12 @@ describe("docx-builder", () => {
     expect(docContent).toContain("<m:t>R</m:t>");
     expect(docContent).toContain("<m:t>total</m:t>");
     expect(docContent).not.toContain("\\text{");
-    expect(docContent).toContain("#(1)");
-    expect(docContent).not.toContain("#(2)");
+    expect(docContent).toContain("(1)");
+    expect(docContent).not.toContain("(2)");
     expect(docContent).toContain("第 1 章　绪论");
     expect(docContent).toContain("表1 算法参数对照表");
-    expect(docContent).toContain("图1　系统总体架构图");
+    expect(docContent).toContain("图1 系统总体架构图");
+    expect(docContent).toContain("<w:tbl>");
     expect(docContent).toContain('<w:jc w:val="right"');
     expect(docContent).toContain('<w:jc w:val="center"');
   });
@@ -393,7 +394,7 @@ describe("docx-builder", () => {
     const docContent = documentXml ?? "";
 
     expect(docContent).toContain("表1 参数对照");
-    expect(docContent).toContain("图1　结构示意");
+    expect(docContent).toContain("图1 结构示意");
     expect(docContent).toContain('<w:b w:val="false"');
   });
 });

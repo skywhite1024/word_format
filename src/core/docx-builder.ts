@@ -37,6 +37,8 @@ const FONT_EN = "Times New Roman";
 const COLOR_BLACK = "000000";
 const TWO_CHAR_TWIP = 2 * 210;
 const REFERENCE_NUMBERING_ID = "reference-numbering";
+const EQUATION_SIDE_COL_MM = 15;
+const EQUATION_MID_COL_MM = 120;
 
 interface BuildDocxOptions {
   mathItalic?: boolean;
@@ -719,7 +721,7 @@ function equationParagraph(
   raw: string,
   equationIndexByKey: Map<string, number>,
   state: { current: number },
-): Paragraph[] {
+): Table {
   const equationText = normalizeLatexLikeText(extractEquationText(raw));
   const key = normalizeEquationKey(equationText);
   const existing = equationIndexByKey.get(key);
@@ -729,35 +731,76 @@ function equationParagraph(
     equationIndexByKey.set(key, equationNumber);
   }
 
-  const equationLine = new Paragraph({
-    alignment: AlignmentType.CENTER,
-    indent: { firstLine: 0 },
-    spacing: {
-      before: 120,
-      after: 0,
-      line: 360,
-      lineRule: LineRuleType.AUTO,
+  return new Table({
+    width: {
+      size: 100,
+      type: WidthType.PERCENTAGE,
     },
-    children: [
-      new Math({
-        children: buildMathComponentsFromExpression(equationText),
+    columnWidths: [
+      convertMillimetersToTwip(EQUATION_SIDE_COL_MM),
+      convertMillimetersToTwip(EQUATION_MID_COL_MM),
+      convertMillimetersToTwip(EQUATION_SIDE_COL_MM),
+    ],
+    margins: {
+      top: 0,
+      bottom: 0,
+      left: 0,
+      right: 0,
+    },
+    borders: {
+      top: { style: "none", size: 0, color: COLOR_BLACK },
+      bottom: { style: "none", size: 0, color: COLOR_BLACK },
+      left: { style: "none", size: 0, color: COLOR_BLACK },
+      right: { style: "none", size: 0, color: COLOR_BLACK },
+      insideHorizontal: { style: "none", size: 0, color: COLOR_BLACK },
+      insideVertical: { style: "none", size: 0, color: COLOR_BLACK },
+    },
+    rows: [
+      new TableRow({
+        children: [
+          new TableCell({
+            width: { size: convertMillimetersToTwip(EQUATION_SIDE_COL_MM), type: WidthType.DXA },
+            verticalAlign: VerticalAlignTable.CENTER,
+            children: [
+              new Paragraph({
+                alignment: AlignmentType.LEFT,
+                spacing: { before: 120, after: 120, line: 360, lineRule: LineRuleType.AUTO },
+                children: [textRun("", FONT_CN_SONG, 21)],
+              }),
+            ],
+          }),
+          new TableCell({
+            width: { size: convertMillimetersToTwip(EQUATION_MID_COL_MM), type: WidthType.DXA },
+            verticalAlign: VerticalAlignTable.CENTER,
+            children: [
+              new Paragraph({
+                alignment: AlignmentType.CENTER,
+                indent: { firstLine: 0 },
+                spacing: { before: 120, after: 120, line: 360, lineRule: LineRuleType.AUTO },
+                children: [
+                  new Math({
+                    children: buildMathComponentsFromExpression(equationText),
+                  }),
+                ],
+              }),
+            ],
+          }),
+          new TableCell({
+            width: { size: convertMillimetersToTwip(EQUATION_SIDE_COL_MM), type: WidthType.DXA },
+            verticalAlign: VerticalAlignTable.CENTER,
+            children: [
+              new Paragraph({
+                alignment: AlignmentType.RIGHT,
+                indent: { firstLine: 0 },
+                spacing: { before: 120, after: 120, line: 360, lineRule: LineRuleType.AUTO },
+                children: [textRun(`(${equationNumber})`, FONT_CN_SONG, 21)],
+              }),
+            ],
+          }),
+        ],
       }),
     ],
   });
-
-  const numberLine = new Paragraph({
-    alignment: AlignmentType.RIGHT,
-    indent: { firstLine: 0 },
-    spacing: {
-      before: 0,
-      after: 120,
-      line: 360,
-      lineRule: LineRuleType.AUTO,
-    },
-    children: [textRun(`#(${equationNumber})`, FONT_CN_SONG, 21)],
-  });
-
-  return [equationLine, numberLine];
 }
 
 function tableCaptionParagraph(index: number, title: string): Paragraph {
@@ -782,7 +825,7 @@ function figureCaptionParagraph(index: number, title: string): Paragraph {
       line: 360,
       lineRule: LineRuleType.AUTO,
     },
-    children: [textRun(`图${index}　${title}`, FONT_CN_HEI, 21, false)],
+    children: [textRun(`图${index} ${title}`, FONT_CN_HEI, 21, false)],
   });
 }
 
@@ -858,7 +901,7 @@ function buildBody(structured: StructuredDoc): FileChild[] {
     }
 
     if (isLikelyEquation(block.text)) {
-      paragraphs.push(...equationParagraph(block.text, equationIndexByKey, equationState));
+      paragraphs.push(equationParagraph(block.text, equationIndexByKey, equationState));
       continue;
     }
 
