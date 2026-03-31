@@ -51,7 +51,7 @@ function textRun(
 }
 
 function baseParagraph(text: string): Paragraph {
-  const normalized = text.trim();
+  const normalized = normalizeMathArtifactText(text.trim());
   const inlineChildren = buildInlineMathChildren(normalized);
 
   return new Paragraph({
@@ -194,6 +194,82 @@ function normalizeLatexLikeText(text: string): string {
   return output;
 }
 
+function normalizeMathArtifactText(text: string): string {
+  let output = text
+    .replace(/[\u200B-\u200D\uFEFF]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  output = output.normalize("NFKD");
+
+  output = output
+    .replace(/\b([A-Z])(task|energy|force|smoothness|safe|total)\b/g, "$1_$2")
+    .replace(/\b([A-Z])\s+(task|energy|force|smoothness|safe|total)\b/gi, "$1_$2")
+    .replace(/\bF\s+c\b/g, "F_c")
+    .replace(/\bF\s+safe\b/gi, "F_safe")
+    .replace(/\bR\s+task\b/gi, "R_task")
+    .replace(/\bR\s+energy\b/gi, "R_energy")
+    .replace(/\bR\s+force\b/gi, "R_force")
+    .replace(/\bR\s+total\b/gi, "R_total")
+    .replace(/\bτ\s*i\b/gi, "τ_i")
+    .replace(/τ([A-Za-z0-9])/g, "τ_$1")
+    .replace(/q\s*̇\s*/g, "q̇")
+    .replace(/\bq\s*˙\s*i\b/gi, "q̇_i")
+    .replace(/\bq˙\s*i\b/gi, "q̇_i")
+    .replace(/q̇([A-Za-z0-9])/g, "q̇_$1")
+    .replace(/\b([A-Za-zτ][A-Za-z0-9_̇]+)\s+\1\b/g, "$1")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  return output;
+}
+
+function isInlineMathToken(token: string): boolean {
+  if (!token) return false;
+  if (token.length > 30) return false;
+  return /_|̇|[τΔΣα-ωΑ-Ω]/.test(token);
+}
+
+function buildInlineMathChildrenFromToken(text: string): Array<TextRun | Math> {
+  const children: Array<TextRun | Math> = [];
+  const regex = /[A-Za-zΑ-Ωα-ωτΔΣ][A-Za-z0-9̇]*(?:_[A-Za-z0-9]+)?(?:\^[A-Za-z0-9]+)?/g;
+  let cursor = 0;
+
+  for (const match of text.matchAll(regex)) {
+    const token = match[0];
+    const start = match.index ?? 0;
+    const end = start + token.length;
+
+    const plain = text.slice(cursor, start);
+    if (plain) {
+      children.push(textRun(plain, FONT_CN_SONG, 24));
+    }
+
+    if (isInlineMathToken(token)) {
+      children.push(
+        new Math({
+          children: [new MathRun(token)],
+        }),
+      );
+    } else {
+      children.push(textRun(token, FONT_CN_SONG, 24));
+    }
+
+    cursor = end;
+  }
+
+  const tail = text.slice(cursor);
+  if (tail) {
+    children.push(textRun(tail, FONT_CN_SONG, 24));
+  }
+
+  if (children.length === 0) {
+    children.push(textRun(text, FONT_CN_SONG, 24));
+  }
+
+  return children;
+}
+
 function hasInlineMath(text: string): boolean {
   return /\$[^$\n]+\$/.test(text);
 }
@@ -224,11 +300,12 @@ function buildInlineMathChildren(text: string): Array<TextRun | Math> {
 
   const tail = text.slice(cursor);
   if (tail) {
-    children.push(textRun(tail, FONT_CN_SONG, 24));
+    const trailing = buildInlineMathChildrenFromToken(tail);
+    children.push(...trailing);
   }
 
-  if (children.length === 0) {
-    children.push(textRun(text, FONT_CN_SONG, 24));
+  if (children.length === 0 || !/\$[^$\n]+\$/.test(text)) {
+    return buildInlineMathChildrenFromToken(text);
   }
 
   return children;

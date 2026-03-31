@@ -97,4 +97,34 @@ describe("docx-builder", () => {
     expect(docContent).toContain("τ_i");
     expect(docContent).toContain("q̇_i");
   });
+
+  it("should normalize noisy unicode math artifacts into editable inline math", async () => {
+    const structured: StructuredDoc = {
+      mode: "official",
+      title: "噪声公式测试",
+      blocks: [
+        {
+          type: "paragraph",
+          level: 0,
+          text: "（1）任务进度奖励（𝑅task R task）： 该项用于引导。",
+        },
+        {
+          type: "paragraph",
+          level: 0,
+          text: "定义为扭矩 𝜏𝑖 τ i 与角速度 𝑞˙𝑖 q ˙ i 的乘积。",
+        },
+      ],
+      stats: { paragraphCount: 2, headingCount: 0, referenceCount: 0 },
+    };
+
+    const bytes = await buildDocx(structured);
+    const zip = await JSZip.loadAsync(bytes);
+    const documentXml = await zip.file("word/document.xml")?.async("string");
+    const docContent = documentXml ?? "";
+
+    expect(docContent).toContain("<m:oMath>");
+    expect(docContent).toContain("R_task");
+    expect(docContent).toContain("τ_i");
+    expect(docContent).toContain("q̇_i");
+  });
 });
