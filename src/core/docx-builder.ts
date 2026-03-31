@@ -7,7 +7,11 @@ import {
   LevelFormat,
   LineRuleType,
   Math,
+  type MathComponent,
   MathRun,
+  MathSubScript,
+  MathSubSuperScript,
+  MathSuperScript,
   Packer,
   PageNumber,
   Paragraph,
@@ -194,6 +198,129 @@ function normalizeLatexLikeText(text: string): string {
   return output;
 }
 
+function isMathBaseStart(ch: string): boolean {
+  return /[A-Za-zΑ-Ωα-ωτΔΣ∑∫√]/.test(ch);
+}
+
+function isMathBaseChar(ch: string): boolean {
+  return /[A-Za-z0-9Α-Ωα-ωτΔΣ∑∫√̇]/.test(ch);
+}
+
+function isScriptTerminator(ch: string): boolean {
+  return /[\s+\-*/<>≤≥×÷|(),;:]/.test(ch);
+}
+
+function readScriptValue(text: string, start: number): { value: string; end: number } {
+  if (start >= text.length) {
+    return { value: "", end: start };
+  }
+
+  if (text[start] === "{") {
+    let depth = 0;
+    let cursor = start;
+    for (; cursor < text.length; cursor += 1) {
+      const ch = text[cursor];
+      if (ch === "{") depth += 1;
+      if (ch === "}") {
+        depth -= 1;
+        if (depth === 0) {
+          const value = text.slice(start + 1, cursor).trim();
+          return { value, end: cursor + 1 };
+        }
+      }
+    }
+    return { value: text.slice(start + 1).trim(), end: text.length };
+  }
+
+  let cursor = start;
+  let value = "";
+  while (cursor < text.length && !isScriptTerminator(text[cursor]) && text[cursor] !== "^" && text[cursor] !== "_") {
+    const ch = text[cursor];
+    if (/[A-Za-zΑ-Ωα-ωτΔΣ∑∫√]/.test(ch) && /^[0-9]+$/.test(value)) {
+      break;
+    }
+    value += ch;
+    cursor += 1;
+  }
+  return { value: value.trim(), end: cursor };
+}
+
+function createScriptMathComponent(base: string, subScript?: string, superScript?: string): MathComponent {
+  const baseChildren: MathComponent[] = [new MathRun(base)];
+  const subChildren: MathComponent[] = subScript ? [new MathRun(subScript)] : [];
+  const superChildren: MathComponent[] = superScript ? [new MathRun(superScript)] : [];
+
+  if (subChildren.length > 0 && superChildren.length > 0) {
+    return new MathSubSuperScript({
+      children: baseChildren,
+      subScript: subChildren,
+      superScript: superChildren,
+    });
+  }
+  if (subChildren.length > 0) {
+    return new MathSubScript({
+      children: baseChildren,
+      subScript: subChildren,
+    });
+  }
+  if (superChildren.length > 0) {
+    return new MathSuperScript({
+      children: baseChildren,
+      superScript: superChildren,
+    });
+  }
+  return new MathRun(base);
+}
+
+function buildMathComponentsFromExpression(expression: string): MathComponent[] {
+  const components: MathComponent[] = [];
+  let cursor = 0;
+
+  while (cursor < expression.length) {
+    const ch = expression[cursor];
+    if (!isMathBaseStart(ch)) {
+      let end = cursor + 1;
+      while (end < expression.length && !isMathBaseStart(expression[end])) {
+        end += 1;
+      }
+      components.push(new MathRun(expression.slice(cursor, end)));
+      cursor = end;
+      continue;
+    }
+
+    let end = cursor + 1;
+    while (end < expression.length && isMathBaseChar(expression[end])) {
+      end += 1;
+    }
+
+    const base = expression.slice(cursor, end);
+    let subScript: string | undefined;
+    let superScript: string | undefined;
+    let tokenCursor = end;
+
+    if (tokenCursor < expression.length && expression[tokenCursor] === "_") {
+      const sub = readScriptValue(expression, tokenCursor + 1);
+      if (sub.value) {
+        subScript = sub.value;
+      }
+      tokenCursor = sub.end;
+    }
+
+    if (tokenCursor < expression.length && expression[tokenCursor] === "^") {
+      const sup = readScriptValue(expression, tokenCursor + 1);
+      if (sup.value) {
+        superScript = sup.value;
+      }
+      tokenCursor = sup.end;
+    }
+
+    components.push(createScriptMathComponent(base, subScript, superScript));
+    cursor = tokenCursor;
+  }
+
+  return components.length > 0 ? components : [new MathRun(expression)];
+}
+
 function normalizeMathArtifactText(text: string): string {
   let output = text
     .replace(/[\u200B-\u200D\uFEFF]/g, "")
@@ -259,7 +386,7 @@ function buildInlineMathChildrenFromToken(text: string): Array<TextRun | Math> {
     if (isInlineMathToken(token)) {
       children.push(
         new Math({
-          children: [new MathRun(token)],
+          children: buildMathComponentsFromExpression(token),
         }),
       );
     } else {
@@ -302,7 +429,7 @@ function buildInlineMathChildren(text: string): Array<TextRun | Math> {
     if (mathText) {
       children.push(
         new Math({
-          children: [new MathRun(mathText)],
+          children: buildMathComponentsFromExpression(mathText),
         }),
       );
     }
@@ -395,7 +522,7 @@ function equationParagraph(
     ],
     children: [
       new Math({
-        children: [new MathRun(equationText)],
+        children: buildMathComponentsFromExpression(equationText),
       }),
       new TextRun({ children: [new Tab()] }),
       textRun(`(${equationNumber})`, FONT_CN_SONG, 21),

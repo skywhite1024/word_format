@@ -59,7 +59,9 @@ describe("docx-builder", () => {
     const docContent = documentXml ?? "";
 
     expect(docContent).toContain("<m:oMath>");
-    expect(docContent).toContain("R_total");
+    expect(docContent).toContain("<m:sSub>");
+    expect(docContent).toContain("<m:t>R</m:t>");
+    expect(docContent).toContain("<m:t>total</m:t>");
     expect(docContent).not.toContain("\\text{");
     expect(docContent).toContain("(1)");
     expect(docContent).not.toContain("(2)");
@@ -93,9 +95,11 @@ describe("docx-builder", () => {
     const docContent = documentXml ?? "";
 
     expect(docContent).toContain("<m:oMath>");
-    expect(docContent).toContain("R_task");
-    expect(docContent).toContain("τ_i");
-    expect(docContent).toContain("q̇_i");
+    expect(docContent).toContain("<m:sSub>");
+    expect(docContent).toContain("<m:t>task</m:t>");
+    expect(docContent).toContain("<m:t>τ</m:t>");
+    expect(docContent).toContain("<m:t>q̇</m:t>");
+    expect(docContent).toContain("<m:t>i</m:t>");
   });
 
   it("should normalize noisy unicode math artifacts into editable inline math", async () => {
@@ -123,9 +127,11 @@ describe("docx-builder", () => {
     const docContent = documentXml ?? "";
 
     expect(docContent).toContain("<m:oMath>");
-    expect(docContent).toContain("R_task");
-    expect(docContent).toContain("τ_i");
-    expect(docContent).toContain("q̇_i");
+    expect(docContent).toContain("<m:sSub>");
+    expect(docContent).toContain("<m:t>task</m:t>");
+    expect(docContent).toContain("<m:t>τ</m:t>");
+    expect(docContent).toContain("<m:t>q̇</m:t>");
+    expect(docContent).toContain("<m:t>i</m:t>");
   });
 
   it("should normalize mixed noisy formula text from pasted Word-like artifacts", async () => {
@@ -153,10 +159,69 @@ describe("docx-builder", () => {
     const docContent = documentXml ?? "";
 
     expect(docContent).toContain("<m:oMath>");
-    expect(docContent).toContain("R_energy");
-    expect(docContent).toContain("τ_i");
-    expect(docContent).toContain("q̇_i");
-    expect(docContent).toContain("F_c");
-    expect(docContent).toContain("F_safe");
+    expect(docContent).toContain("<m:sSub>");
+    expect(docContent).toContain("<m:t>energy</m:t>");
+    expect(docContent).toContain("<m:t>c</m:t>");
+    expect(docContent).toContain("<m:t>safe</m:t>");
+    expect(docContent).toContain("<m:t>τ</m:t>");
+    expect(docContent).toContain("<m:t>q̇</m:t>");
+  });
+
+  it("should emit real subscript/superscript oMath nodes for latex formulas", async () => {
+    const structured: StructuredDoc = {
+      mode: "official",
+      title: "上下标公式测试",
+      blocks: [
+        {
+          type: "paragraph",
+          level: 0,
+          text: "本方案针对传统 PPO 设计了包含柔顺性内在约束的复合奖励函数 $R_{\\text{total}}$：",
+        },
+        {
+          type: "paragraph",
+          level: 0,
+          text: "$$R_{\\text{total}} = w_1 R_{\\text{task}} + w_2 R_{\\text{energy}} + w_3 R_{\\text{force}} + w_4 R_{\\text{smoothness}}$$",
+        },
+      ],
+      stats: { paragraphCount: 2, headingCount: 0, referenceCount: 0 },
+    };
+
+    const bytes = await buildDocx(structured);
+    const zip = await JSZip.loadAsync(bytes);
+    const documentXml = await zip.file("word/document.xml")?.async("string");
+    const docContent = documentXml ?? "";
+
+    expect(docContent).toContain("<m:oMath>");
+    expect(docContent).toContain("<m:sSub>");
+    expect(docContent).toContain("total");
+    expect(docContent).toContain("task");
+    expect(docContent).toContain("energy");
+    expect(docContent).toContain("force");
+    expect(docContent).toContain("smoothness");
+  });
+
+  it("should emit sub-sup structure for combined scripts", async () => {
+    const structured: StructuredDoc = {
+      mode: "official",
+      title: "上下标组合测试",
+      blocks: [
+        {
+          type: "paragraph",
+          level: 0,
+          text: "$$R_{\\text{energy}} = - \\sum_{i=1}^{7} |\\tau_i \\cdot \\dot{q}_i|$$",
+        },
+      ],
+      stats: { paragraphCount: 1, headingCount: 0, referenceCount: 0 },
+    };
+
+    const bytes = await buildDocx(structured);
+    const zip = await JSZip.loadAsync(bytes);
+    const documentXml = await zip.file("word/document.xml")?.async("string");
+    const docContent = documentXml ?? "";
+
+    expect(docContent).toContain("<m:sSubSup>");
+    expect(docContent).toContain("<m:t>∑</m:t>");
+    expect(docContent).toContain("<m:t>i=1</m:t>");
+    expect(docContent).toContain("<m:t>7</m:t>");
   });
 });
