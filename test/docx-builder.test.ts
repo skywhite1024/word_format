@@ -224,4 +224,75 @@ describe("docx-builder", () => {
     expect(docContent).toContain("<m:t>i=1</m:t>");
     expect(docContent).toContain("<m:t>7</m:t>");
   });
+
+  it("should parse exponent and norm absolute bars in block equations", async () => {
+    const structured: StructuredDoc = {
+      mode: "official",
+      title: "指数与范数测试",
+      blocks: [
+        {
+          type: "paragraph",
+          level: 0,
+          text: "$$R_{\\text{force}} = - \\max(0, F_c - F_{\\text{safe}})^2$$",
+        },
+        {
+          type: "paragraph",
+          level: 0,
+          text: "$$R_{\\text{smoothness}} = - \\|a_t - a_{t-1}\\|_2^2$$",
+        },
+      ],
+      stats: { paragraphCount: 2, headingCount: 0, referenceCount: 0 },
+    };
+
+    const bytes = await buildDocx(structured);
+    const zip = await JSZip.loadAsync(bytes);
+    const documentXml = await zip.file("word/document.xml")?.async("string");
+    const docContent = documentXml ?? "";
+
+    expect(docContent).toContain("<m:sSup>");
+    expect(docContent).toContain("<m:sSubSup>");
+    expect(docContent).toContain("<m:t>2</m:t>");
+    expect(docContent).toContain("<m:t>|</m:t>");
+  });
+
+  it("should render citations as superscript hyperlinks to references", async () => {
+    const structured: StructuredDoc = {
+      mode: "thesis",
+      title: "引用跳转测试",
+      blocks: [
+        {
+          type: "paragraph",
+          level: 0,
+          text: "该惩罚项实现柔顺接触过渡[20][21]。",
+        },
+        {
+          type: "heading",
+          level: 1,
+          text: "参考文献",
+        },
+        {
+          type: "reference",
+          level: 0,
+          text: "[20] A. Author, Citation Twenty.",
+        },
+        {
+          type: "reference",
+          level: 0,
+          text: "[21] B. Author, Citation Twenty-One.",
+        },
+      ],
+      stats: { paragraphCount: 3, headingCount: 1, referenceCount: 2 },
+    };
+
+    const bytes = await buildDocx(structured);
+    const zip = await JSZip.loadAsync(bytes);
+    const documentXml = await zip.file("word/document.xml")?.async("string");
+    const docContent = documentXml ?? "";
+
+    expect(docContent).toContain('w:anchor="ref-20"');
+    expect(docContent).toContain('w:anchor="ref-21"');
+    expect(docContent).toContain('w:name="ref-20"');
+    expect(docContent).toContain('w:name="ref-21"');
+    expect(docContent).toContain('w:val="superscript"');
+  });
 });

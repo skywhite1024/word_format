@@ -1,9 +1,11 @@
 import {
   AlignmentType,
+  Bookmark,
   Document,
   FileChild,
   Footer,
   HeadingLevel,
+  InternalHyperlink,
   LevelFormat,
   LineRuleType,
   Math,
@@ -14,6 +16,7 @@ import {
   MathSuperScript,
   Packer,
   PageNumber,
+  type ParagraphChild,
   Paragraph,
   Tab,
   TabStopPosition,
@@ -38,10 +41,12 @@ function textRun(
   cnFont: string,
   sizeHalfPt: number,
   bold = false,
+  superScript = false,
 ): TextRun {
   return new TextRun({
     text,
     bold,
+    superScript,
     size: sizeHalfPt,
     color: COLOR_BLACK,
     font: {
@@ -55,8 +60,12 @@ function textRun(
 }
 
 function baseParagraph(text: string): Paragraph {
+  return baseParagraphWithCitations(text, new Map<number, string>());
+}
+
+function baseParagraphWithCitations(text: string, citationAnchorMap: Map<number, string>): Paragraph {
   const normalized = normalizeMathArtifactText(text.trim());
-  const inlineChildren = buildInlineMathChildren(normalized);
+  const inlineChildren = buildInlineChildrenWithCitation(normalized, citationAnchorMap);
 
   return new Paragraph({
     children: inlineChildren,
@@ -124,9 +133,17 @@ function normalizeHeadingText(text: string, level: number): string {
 }
 
 function referenceParagraph(raw: string): Paragraph {
+  return referenceParagraphWithAnchor(raw);
+}
+
+function referenceParagraphWithAnchor(raw: string, anchorId?: string): Paragraph {
   const content = raw.replace(/^\[\d+\]\s*/, "").replace(/^\d+[).、]\s*/, "").trim();
+  const contentRun = textRun(content, FONT_CN_KAI, 21);
+  const children: ParagraphChild[] = anchorId
+    ? [new Bookmark({ id: anchorId, children: [contentRun] })]
+    : [contentRun];
   return new Paragraph({
-    children: [textRun(content, FONT_CN_KAI, 21)],
+    children,
     alignment: AlignmentType.LEFT,
     numbering: {
       reference: REFERENCE_NUMBERING_ID,
@@ -176,6 +193,7 @@ function normalizeLatexLikeText(text: string): string {
     .replace(/\\dot\{([^{}]+)\}/g, "$1̇")
     .replace(/\\left/g, "")
     .replace(/\\right/g, "")
+    .replace(/\\\|/g, "|")
     .replace(/\\cdot/g, "·")
     .replace(/\\times/g, "×")
     .replace(/\\leq/g, "≤")
@@ -200,6 +218,10 @@ function normalizeLatexLikeText(text: string): string {
 
 function isMathBaseStart(ch: string): boolean {
   return /[A-Za-zΑ-Ωα-ωτΔΣ∑∫√]/.test(ch);
+}
+
+function isScriptBaseSymbol(ch: string): boolean {
+  return /[)\]\}|]/.test(ch);
 }
 
 function isMathBaseChar(ch: string): boolean {
@@ -278,19 +300,18 @@ function buildMathComponentsFromExpression(expression: string): MathComponent[] 
 
   while (cursor < expression.length) {
     const ch = expression[cursor];
-    if (!isMathBaseStart(ch)) {
-      let end = cursor + 1;
-      while (end < expression.length && !isMathBaseStart(expression[end])) {
-        end += 1;
-      }
-      components.push(new MathRun(expression.slice(cursor, end)));
-      cursor = end;
+    const canBeBase = isMathBaseStart(ch) || isScriptBaseSymbol(ch);
+    if (!canBeBase) {
+      components.push(new MathRun(ch));
+      cursor += 1;
       continue;
     }
 
     let end = cursor + 1;
-    while (end < expression.length && isMathBaseChar(expression[end])) {
-      end += 1;
+    if (isMathBaseStart(ch)) {
+      while (end < expression.length && isMathBaseChar(expression[end])) {
+        end += 1;
+      }
     }
 
     const base = expression.slice(cursor, end);
@@ -298,20 +319,20 @@ function buildMathComponentsFromExpression(expression: string): MathComponent[] 
     let superScript: string | undefined;
     let tokenCursor = end;
 
-    if (tokenCursor < expression.length && expression[tokenCursor] === "_") {
-      const sub = readScriptValue(expression, tokenCursor + 1);
-      if (sub.value) {
-        subScript = sub.value;
+    while (tokenCursor < expression.length && (expression[tokenCursor] === "_" || expression[tokenCursor] === "^")) {
+      const marker = expression[tokenCursor];
+      const script = readScriptValue(expression, tokenCursor + 1);
+      if (!script.value) {
+        break;
       }
-      tokenCursor = sub.end;
-    }
-
-    if (tokenCursor < expression.length && expression[tokenCursor] === "^") {
-      const sup = readScriptValue(expression, tokenCursor + 1);
-      if (sup.value) {
-        superScript = sup.value;
+      if (marker === "_" && !subScript) {
+        subScript = script.value;
+      } else if (marker === "^" && !superScript) {
+        superScript = script.value;
+      } else {
+        break;
       }
-      tokenCursor = sup.end;
+      tokenCursor = script.end;
     }
 
     components.push(createScriptMathComponent(base, subScript, superScript));
@@ -449,6 +470,91 @@ function buildInlineMathChildren(text: string): Array<TextRun | Math> {
   return children;
 }
 
+function citationRun(text: string): TextRun {
+  return textRun(text, FONT_CN_SONG, 16, false, true);
+}
+
+function buildInlineChildrenWithCitation(
+  text: string,
+  citationAnchorMap: Map<number, string>,
+): ParagraphChild[] {
+  const children: ParagraphChild[] = [];
+  const regex = /\[(\d+)\]/g;
+  let cursor = 0;
+
+  for (const match of text.matchAll(regex)) {
+    const start = match.index ?? 0;
+    const end = start + match[0].length;
+
+    const plain = text.slice(cursor, start);
+    if (plain) {
+      children.push(...buildInlineMathChildren(plain));
+    }
+
+    const referenceIndex = Number.parseInt(match[1], 10);
+    const anchorId = citationAnchorMap.get(referenceIndex);
+    const run = citationRun(match[0]);
+
+    if (anchorId) {
+      children.push(
+        new InternalHyperlink({
+          anchor: anchorId,
+          children: [run],
+        }),
+      );
+    } else {
+      children.push(run);
+    }
+
+    cursor = end;
+  }
+
+  const tail = text.slice(cursor);
+  if (tail) {
+    children.push(...buildInlineMathChildren(tail));
+  }
+
+  return children.length > 0 ? children : [textRun(text, FONT_CN_SONG, 24)];
+}
+
+function parseReferenceIndex(raw: string, fallbackIndex: number): number {
+  const bracket = raw.match(/^\[(\d+)\]/);
+  if (bracket) {
+    return Number.parseInt(bracket[1], 10);
+  }
+  const numbered = raw.match(/^(\d+)[).、]/);
+  if (numbered) {
+    return Number.parseInt(numbered[1], 10);
+  }
+  return fallbackIndex;
+}
+
+function buildReferenceAnchorMap(blocks: Block[]): Map<number, string> {
+  const result = new Map<number, string>();
+  const used = new Set<string>();
+  let fallbackIndex = 1;
+
+  for (const block of blocks) {
+    if (block.type !== "reference") continue;
+    const index = parseReferenceIndex(block.text, fallbackIndex);
+    fallbackIndex += 1;
+    let anchor = `ref-${index}`;
+    if (used.has(anchor)) {
+      let suffix = 2;
+      while (used.has(`${anchor}-${suffix}`)) {
+        suffix += 1;
+      }
+      anchor = `${anchor}-${suffix}`;
+    }
+    used.add(anchor);
+    if (!result.has(index)) {
+      result.set(index, anchor);
+    }
+  }
+
+  return result;
+}
+
 function isEquationNumberOnlyLine(text: string): boolean {
   return /^[（(]\d+[）)]$/.test(text.trim()) || /^\(\d+\)$/.test(text.trim());
 }
@@ -558,6 +664,7 @@ function figureCaptionParagraph(index: number, title: string): Paragraph {
 
 function buildBody(structured: StructuredDoc): FileChild[] {
   const paragraphs: FileChild[] = [];
+  const referenceAnchorMap = buildReferenceAnchorMap(structured.blocks);
   const equationIndexByKey = new Map<string, number>();
   const equationState = { current: 0 };
   let tableIndex = 0;
@@ -596,7 +703,9 @@ function buildBody(structured: StructuredDoc): FileChild[] {
       continue;
     }
     if (block.type === "reference") {
-      paragraphs.push(referenceParagraph(block.text));
+      const referenceIndex = parseReferenceIndex(block.text, 0);
+      const anchorId = referenceAnchorMap.get(referenceIndex);
+      paragraphs.push(referenceParagraphWithAnchor(block.text, anchorId));
       continue;
     }
 
@@ -624,11 +733,11 @@ function buildBody(structured: StructuredDoc): FileChild[] {
     }
 
     if (hasInlineMath(block.text)) {
-      paragraphs.push(baseParagraph(block.text));
+      paragraphs.push(baseParagraphWithCitations(block.text, referenceAnchorMap));
       continue;
     }
 
-    paragraphs.push(baseParagraph(block.text));
+    paragraphs.push(baseParagraphWithCitations(block.text, referenceAnchorMap));
   }
 
   return paragraphs;
