@@ -21,8 +21,12 @@ import {
   Tab,
   TabStopPosition,
   TabStopType,
+  Table,
+  TableCell,
   TableOfContents,
+  TableRow,
   TextRun,
+  WidthType,
   convertMillimetersToTwip,
 } from "docx";
 import JSZip from "jszip";
@@ -35,6 +39,10 @@ const FONT_EN = "Times New Roman";
 const COLOR_BLACK = "000000";
 const TWO_CHAR_TWIP = 2 * 210;
 const REFERENCE_NUMBERING_ID = "reference-numbering";
+
+interface BuildDocxOptions {
+  mathItalic?: boolean;
+}
 
 function textRun(
   text: string,
@@ -471,7 +479,7 @@ function buildInlineMathChildren(text: string): Array<TextRun | Math> {
 }
 
 function citationRun(text: string): TextRun {
-  return textRun(text, FONT_CN_SONG, 16, false, true);
+  return textRun(text, FONT_CN_SONG, 24, false, true);
 }
 
 function buildInlineChildrenWithCitation(
@@ -579,6 +587,82 @@ function parseFigureCaption(raw: string): { title: string } | null {
   const title = normalizeCaptionTitle(match[1]);
   if (!title) return null;
   return { title };
+}
+
+function splitTableCells(rawRow: string): string[] {
+  return rawRow
+    .trim()
+    .replace(/^\|/, "")
+    .replace(/\|$/, "")
+    .split("|")
+    .map((cell) => cell.trim())
+    .filter((cell) => cell.length > 0);
+}
+
+function isTableSeparatorRow(cells: string[]): boolean {
+  if (cells.length === 0) return false;
+  return cells.every((cell) => /^:?-{2,}:?$/.test(cell));
+}
+
+function parseInlineMarkdownTable(raw: string): string[][] | null {
+  const trimmed = raw.trim();
+  if (!trimmed.includes("|")) return null;
+
+  const rowCandidates = trimmed.includes("||")
+    ? trimmed
+        .split(/\|\|+/)
+        .map((row) => row.trim())
+        .filter((row) => row.includes("|"))
+    : trimmed
+        .split(/\n+/)
+        .map((row) => row.trim())
+        .filter((row) => row.startsWith("|") && row.endsWith("|"));
+
+  if (rowCandidates.length < 2) return null;
+
+  const parsedRows = rowCandidates
+    .map((row) => splitTableCells(row))
+    .filter((cells) => cells.length > 0);
+
+  if (parsedRows.length < 2) return null;
+
+  const contentRows = parsedRows.filter((cells) => !isTableSeparatorRow(cells));
+  if (contentRows.length < 2) return null;
+
+  const columnCount = contentRows[0].length;
+  if (columnCount < 2) return null;
+  if (!contentRows.every((cells) => cells.length === columnCount)) return null;
+
+  return contentRows;
+}
+
+function buildDocxTable(rows: string[][]): Table {
+  return new Table({
+    width: {
+      size: 100,
+      type: WidthType.PERCENTAGE,
+    },
+    rows: rows.map((cells, rowIndex) =>
+      new TableRow({
+        children: cells.map(
+          (cell) =>
+            new TableCell({
+              children: [
+                new Paragraph({
+                  spacing: {
+                    before: 0,
+                    after: 0,
+                    line: 360,
+                    lineRule: LineRuleType.AUTO,
+                  },
+                  children: [textRun(cell, FONT_CN_SONG, 21, rowIndex === 0)],
+                }),
+              ],
+            }),
+        ),
+      }),
+    ),
+  });
 }
 
 function isLikelyEquation(raw: string): boolean {
@@ -727,6 +811,12 @@ function buildBody(structured: StructuredDoc): FileChild[] {
       continue;
     }
 
+    const tableRows = parseInlineMarkdownTable(block.text);
+    if (tableRows) {
+      paragraphs.push(buildDocxTable(tableRows));
+      continue;
+    }
+
     if (isLikelyEquation(block.text)) {
       paragraphs.push(equationParagraph(block.text, equationIndexByKey, equationState));
       continue;
@@ -748,7 +838,14 @@ function patchFirstLineIndentToChars(xml: string): string {
   return xml.replace(/w:firstLine="420"/g, 'w:firstLineChars="200"');
 }
 
-async function normalizeFirstLineIndentToChars(rawBytes: Uint8Array): Promise<Uint8Array> {
+function patchMathItalic(xml: string, mathItalic: boolean): string {
+  if (mathItalic) {
+    return xml;
+  }
+  return xml.replace(/<m:r>\s*<m:t>/g, "<m:r><m:rPr><m:nor/></m:rPr><m:t>");
+}
+
+async function normalizeDocumentXml(rawBytes: Uint8Array, options: BuildDocxOptions): Promise<Uint8Array> {
   const zip = await JSZip.loadAsync(rawBytes);
   const documentXmlFile = zip.file("word/document.xml");
   if (!documentXmlFile) {
@@ -756,13 +853,14 @@ async function normalizeFirstLineIndentToChars(rawBytes: Uint8Array): Promise<Ui
   }
 
   const originalXml = await documentXmlFile.async("string");
-  const patchedXml = patchFirstLineIndentToChars(originalXml);
+  const indentPatched = patchFirstLineIndentToChars(originalXml);
+  const patchedXml = patchMathItalic(indentPatched, options.mathItalic ?? true);
   zip.file("word/document.xml", patchedXml);
 
   return zip.generateAsync({ type: "uint8array" });
 }
 
-export async function buildDocx(structured: StructuredDoc): Promise<Uint8Array> {
+export async function buildDocx(structured: StructuredDoc, options: BuildDocxOptions = {}): Promise<Uint8Array> {
   const doc = new Document({
     numbering: {
       config: [
@@ -816,5 +914,5 @@ export async function buildDocx(structured: StructuredDoc): Promise<Uint8Array> 
   });
 
   const rawBytes = await Packer.toBuffer(doc);
-  return normalizeFirstLineIndentToChars(rawBytes);
+  return normalizeDocumentXml(rawBytes, options);
 }

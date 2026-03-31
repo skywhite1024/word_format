@@ -16,6 +16,7 @@ interface RequestPayload {
   text: string;
   mode: Mode;
   useLlm: boolean;
+  mathItalic: boolean;
 }
 
 function jsonResponse(data: unknown, status = 200): Response {
@@ -47,12 +48,21 @@ function sanitizeUseLlm(input: unknown): boolean {
   return true;
 }
 
+function sanitizeMathItalic(input: unknown): boolean {
+  if (typeof input === "boolean") return input;
+  if (typeof input === "string") {
+    return !(input === "false" || input === "0");
+  }
+  return true;
+}
+
 async function parsePayload(request: Request): Promise<RequestPayload | null> {
   try {
     const payload = (await request.json()) as {
       text?: unknown;
       mode?: unknown;
       useLlm?: unknown;
+      mathItalic?: unknown;
     };
     const rawText = typeof payload.text === "string" ? payload.text : "";
     const text = sanitizeMarkdownText(rawText);
@@ -66,6 +76,7 @@ async function parsePayload(request: Request): Promise<RequestPayload | null> {
       text,
       mode: sanitizeMode(payload.mode),
       useLlm: sanitizeUseLlm(payload.useLlm),
+      mathItalic: sanitizeMathItalic(payload.mathItalic),
     };
   } catch (error) {
     if (error instanceof Error) {
@@ -140,7 +151,9 @@ export default {
         if (!payload) return badRequest("text 不能为空");
 
         const result = await buildStructuredResult(payload, env);
-        const fileContent = await buildDocx(result.structured);
+        const fileContent = await buildDocx(result.structured, {
+          mathItalic: payload.mathItalic,
+        });
         const filename = `formatted_${Date.now()}.docx`;
         const stableBytes = new Uint8Array(fileContent.byteLength);
         stableBytes.set(fileContent);

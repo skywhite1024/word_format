@@ -294,5 +294,53 @@ describe("docx-builder", () => {
     expect(docContent).toContain('w:name="ref-20"');
     expect(docContent).toContain('w:name="ref-21"');
     expect(docContent).toContain('w:val="superscript"');
+    expect(docContent).toContain('w:sz w:val="24"');
+  });
+
+  it("should reconstruct inline markdown-like table into real docx table", async () => {
+    const structured: StructuredDoc = {
+      mode: "official",
+      title: "表格恢复测试",
+      blocks: [
+        {
+          type: "paragraph",
+          level: 0,
+          text: "| 配置模块 | Isaac Lab 关键参数/技术 | Unitree Dex3-1 对应映射与物理意义 ||---|---|---|| 资产与运动学 | UrdfConverterCfg, ArticulationCfg | 导入 Dex3-1 URDF。 || 驱动与柔顺性 | PDGainsCfg | 模拟顺应性。 |",
+        },
+      ],
+      stats: { paragraphCount: 1, headingCount: 0, referenceCount: 0 },
+    };
+
+    const bytes = await buildDocx(structured);
+    const zip = await JSZip.loadAsync(bytes);
+    const documentXml = await zip.file("word/document.xml")?.async("string");
+    const docContent = documentXml ?? "";
+
+    expect(docContent).toContain("<w:tbl>");
+    expect(docContent).toContain("配置模块");
+    expect(docContent).toContain("资产与运动学");
+    expect(docContent).toContain("驱动与柔顺性");
+  });
+
+  it("should support math italic toggle off by forcing normal math run", async () => {
+    const structured: StructuredDoc = {
+      mode: "official",
+      title: "公式正体开关测试",
+      blocks: [
+        {
+          type: "paragraph",
+          level: 0,
+          text: "$$R_{\\text{force}} = - \\max(0, F_c - F_{\\text{safe}})^2$$",
+        },
+      ],
+      stats: { paragraphCount: 1, headingCount: 0, referenceCount: 0 },
+    };
+
+    const bytes = await buildDocx(structured, { mathItalic: false });
+    const zip = await JSZip.loadAsync(bytes);
+    const documentXml = await zip.file("word/document.xml")?.async("string");
+    const docContent = documentXml ?? "";
+
+    expect(docContent).toContain("<m:nor/>");
   });
 });

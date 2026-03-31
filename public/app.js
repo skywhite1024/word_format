@@ -1,6 +1,7 @@
 const inputText = document.getElementById("inputText");
 const modeSelect = document.getElementById("mode");
 const useLlmInput = document.getElementById("useLlm");
+const mathItalicInput = document.getElementById("mathItalic");
 const formatBtn = document.getElementById("formatBtn");
 const downloadBtn = document.getElementById("downloadBtn");
 const stats = document.getElementById("stats");
@@ -11,6 +12,7 @@ async function callFormatApi(path) {
     text: inputText.value || "",
     mode: modeSelect.value || "auto",
     useLlm: !!useLlmInput?.checked,
+    mathItalic: !!mathItalicInput?.checked,
   };
   const response = await fetch(path, {
     method: "POST",
