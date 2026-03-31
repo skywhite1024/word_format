@@ -1,6 +1,6 @@
 # Text Word Format Worker
 
-将原始中文文本智能解析为结构化文档，并导出符合公文/论文规范的 `.docx`。项目基于 **Cloudflare Workers + TypeScript + docx**，支持规则引擎与 LLM 结构化双路径。
+将原始中文文本解析为结构化文档，并导出符合公文/论文规范的 `.docx`。项目基于 **Cloudflare Workers + TypeScript + docx**，提供规则引擎与 LLM 结构化双路径，并具备可回退的稳定处理链路。
 
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Cloudflare Workers](https://img.shields.io/badge/Cloudflare-Workers-F38020?logo=cloudflare&logoColor=white)](https://workers.cloudflare.com/)
@@ -11,8 +11,17 @@
 - 支持 `official`、`thesis`、`auto` 三种模式。
 - 规则引擎与 LLM（ModelScope）自动回退机制。
 - 自动识别标题层级（一级/二级/三级）与参考文献区块。
-- 自动将正文分项 `1、`/`1.` 规范为 `（1）`（避免误判为四级标题）。
-- 导出 `.docx` 时应用规范字体、页边距、行距、目录（thesis）。
+- 正文分项 `1、`/`1.` 统一规范为 `（1）`（避免误判为标题）。
+- 导出 `.docx` 时应用规范字体、页边距、行距与目录（thesis）。
+
+## 文档排版能力
+
+- 标题样式：一级/二级标题为黑体，字号保持规范且不加粗。
+- 公式处理：支持上下标、指数、绝对值/范数等表达式；可选公式斜体开关。
+- 公式编号：采用 $1\times3$ 无边框表格模板，居中公式、右侧编号。
+- 引用与参考文献：正文引用 `[n]` 生成上标并与参考文献建立内部跳转。
+- 表格与题注：支持三线表样式、单元格水平/垂直居中；图表题注不加粗。
+- 图题格式：使用“图N 标题”（半角空格）。
 
 ## 可视化架构
 
@@ -100,7 +109,8 @@ npm run dev
 {
   "text": "你的原始文本",
   "mode": "auto",
-  "useLlm": true
+  "useLlm": true,
+  "mathItalic": false
 }
 ```
 
