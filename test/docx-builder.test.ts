@@ -127,4 +127,36 @@ describe("docx-builder", () => {
     expect(docContent).toContain("τ_i");
     expect(docContent).toContain("q̇_i");
   });
+
+  it("should normalize mixed noisy formula text from pasted Word-like artifacts", async () => {
+    const structured: StructuredDoc = {
+      mode: "official",
+      title: "复杂噪声公式测试",
+      blocks: [
+        {
+          type: "paragraph",
+          level: 0,
+          text: "（2）能量消耗与柔顺约束（𝑅energy R energy ）：定义为扭矩 𝜏𝑖 τ i 与角速度 𝑞˙𝑖 q ˙ i 的绝对乘积。",
+        },
+        {
+          type: "paragraph",
+          level: 0,
+          text: "接触力过载惩罚（𝐹𝑐 F c ）：当 𝐹𝑐 F c 超过设定的安全阈值 𝐹safe F safe 时施加惩罚。",
+        },
+      ],
+      stats: { paragraphCount: 2, headingCount: 0, referenceCount: 0 },
+    };
+
+    const bytes = await buildDocx(structured);
+    const zip = await JSZip.loadAsync(bytes);
+    const documentXml = await zip.file("word/document.xml")?.async("string");
+    const docContent = documentXml ?? "";
+
+    expect(docContent).toContain("<m:oMath>");
+    expect(docContent).toContain("R_energy");
+    expect(docContent).toContain("τ_i");
+    expect(docContent).toContain("q̇_i");
+    expect(docContent).toContain("F_c");
+    expect(docContent).toContain("F_safe");
+  });
 });

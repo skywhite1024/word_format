@@ -22,6 +22,22 @@ describe("analyzeText", () => {
     expect(result.stats.referenceCount).toBe(2);
   });
 
+  it("should normalize references even in official mode when section exists", () => {
+    const text = [
+      "工作通告",
+      "",
+      "参考文献",
+      "",
+      "[1] 张三. 文献条目一.",
+      "[2] 李四. 文献条目二.",
+    ].join("\n");
+
+    const result = analyzeText(text, "official");
+    expect(result.mode).toBe("official");
+    expect(result.stats.referenceCount).toBe(2);
+    expect(result.blocks.filter((b) => b.type === "reference")).toHaveLength(2);
+  });
+
   it("should keep official mode when requested", () => {
     const text = "通知\n\n一、总体安排\n\n请各部门按时提交材料。";
     const result = analyzeText(text, "official");

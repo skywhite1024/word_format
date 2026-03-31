@@ -228,7 +228,7 @@ export function composeStructuredDoc(
 ): StructuredDoc {
   const targetMode = toSafeMode(mode);
   const cleanBlocks = sanitizeBlocks(blocks);
-  const enhancedBlocks = targetMode === "thesis" ? normalizeReferenceItems(cleanBlocks) : cleanBlocks;
+  const enhancedBlocks = normalizeReferenceItems(cleanBlocks);
 
   return {
     mode: targetMode,
