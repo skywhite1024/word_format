@@ -26,6 +26,7 @@ import {
   TableOfContents,
   TableRow,
   TextRun,
+  VerticalAlignTable,
   WidthType,
   convertMillimetersToTwip,
 } from "docx";
@@ -642,13 +643,30 @@ function buildDocxTable(rows: string[][]): Table {
       size: 100,
       type: WidthType.PERCENTAGE,
     },
+    borders: {
+      top: { style: "single", size: 8, color: COLOR_BLACK },
+      bottom: { style: "single", size: 8, color: COLOR_BLACK },
+      left: { style: "none", size: 0, color: COLOR_BLACK },
+      right: { style: "none", size: 0, color: COLOR_BLACK },
+      insideHorizontal: { style: "none", size: 0, color: COLOR_BLACK },
+      insideVertical: { style: "none", size: 0, color: COLOR_BLACK },
+    },
+    alignment: AlignmentType.CENTER,
     rows: rows.map((cells, rowIndex) =>
       new TableRow({
         children: cells.map(
           (cell) =>
             new TableCell({
+              verticalAlign: VerticalAlignTable.CENTER,
+              borders:
+                rowIndex === 0
+                  ? {
+                      bottom: { style: "single", size: 8, color: COLOR_BLACK },
+                    }
+                  : undefined,
               children: [
                 new Paragraph({
+                  alignment: AlignmentType.CENTER,
                   spacing: {
                     before: 0,
                     after: 0,
@@ -677,6 +695,25 @@ function isLikelyEquation(raw: string): boolean {
   return hasMathKeyword || (hasEquationOperator && hasMathContext);
 }
 
+function isStandaloneInlineMathLine(text: string): boolean {
+  return /^\$[^$\n]+\$$/.test(text.trim());
+}
+
+function centeredInlineMathParagraph(rawText: string): Paragraph {
+  const normalized = normalizeMathArtifactText(rawText.trim());
+  return new Paragraph({
+    children: buildInlineMathChildren(normalized),
+    alignment: AlignmentType.CENTER,
+    indent: { firstLine: 0 },
+    spacing: {
+      before: 120,
+      after: 120,
+      line: 360,
+      lineRule: LineRuleType.AUTO,
+    },
+  });
+}
+
 function normalizeEquationKey(text: string): string {
   return text.replace(/\s+/g, "").trim();
 }
@@ -696,7 +733,7 @@ function equationParagraph(
   }
 
   return new Paragraph({
-    alignment: AlignmentType.LEFT,
+    alignment: AlignmentType.CENTER,
     indent: { firstLine: 0 },
     spacing: {
       before: 120,
@@ -819,6 +856,11 @@ function buildBody(structured: StructuredDoc): FileChild[] {
 
     if (isLikelyEquation(block.text)) {
       paragraphs.push(equationParagraph(block.text, equationIndexByKey, equationState));
+      continue;
+    }
+
+    if (isStandaloneInlineMathLine(block.text)) {
+      paragraphs.push(centeredInlineMathParagraph(block.text));
       continue;
     }
 

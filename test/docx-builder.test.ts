@@ -317,6 +317,13 @@ describe("docx-builder", () => {
     const docContent = documentXml ?? "";
 
     expect(docContent).toContain("<w:tbl>");
+    expect(docContent).toContain('w:tblBorders');
+    expect(docContent).toContain('w:top w:val="single"');
+    expect(docContent).toContain('w:bottom w:val="single"');
+    expect(docContent).toContain('w:left w:val="none"');
+    expect(docContent).toContain('w:right w:val="none"');
+    expect(docContent).toContain('w:vAlign w:val="center"');
+    expect(docContent).toContain('w:jc w:val="center"');
     expect(docContent).toContain("配置模块");
     expect(docContent).toContain("资产与运动学");
     expect(docContent).toContain("驱动与柔顺性");
@@ -342,5 +349,28 @@ describe("docx-builder", () => {
     const docContent = documentXml ?? "";
 
     expect(docContent).toContain("<m:nor/>");
+  });
+
+  it("should center standalone inline math line", async () => {
+    const structured: StructuredDoc = {
+      mode: "official",
+      title: "单行公式居中测试",
+      blocks: [
+        {
+          type: "paragraph",
+          level: 0,
+          text: "$R_{\\text{smoothness}} = - \\|a_t - a_{t-1}\\|_2^2$",
+        },
+      ],
+      stats: { paragraphCount: 1, headingCount: 0, referenceCount: 0 },
+    };
+
+    const bytes = await buildDocx(structured);
+    const zip = await JSZip.loadAsync(bytes);
+    const documentXml = await zip.file("word/document.xml")?.async("string");
+    const docContent = documentXml ?? "";
+
+    expect(docContent).toContain('<w:jc w:val="center"');
+    expect(docContent).toContain('<m:oMath>');
   });
 });
