@@ -96,7 +96,7 @@ function headingParagraph(block: Block): Paragraph {
   if (block.level === 1) {
     return new Paragraph({
       heading: HeadingLevel.HEADING_1,
-      children: [textRun(headingText, FONT_CN_HEI, 32, true)],
+      children: [textRun(headingText, FONT_CN_HEI, 32, false)],
       alignment: AlignmentType.CENTER,
       spacing: { before: 240, after: 240 },
     });
@@ -104,7 +104,7 @@ function headingParagraph(block: Block): Paragraph {
   if (block.level === 2) {
     return new Paragraph({
       heading: HeadingLevel.HEADING_2,
-      children: [textRun(headingText, FONT_CN_HEI, 24, true)],
+      children: [textRun(headingText, FONT_CN_HEI, 24, false)],
       alignment: AlignmentType.LEFT,
       indent: { firstLine: TWO_CHAR_TWIP },
       spacing: { before: 0, after: 0, line: 360, lineRule: LineRuleType.AUTO },
