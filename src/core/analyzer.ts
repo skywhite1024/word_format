@@ -93,7 +93,10 @@ function headingLevel(paragraph: string): number | null {
     level = 1;
   } else if (/^\d+\.\d+\.\d+\s+/.test(p)) {
     level = 3;
-  } else if (/^\d+\.\d+\s+/.test(p) || /^[（(][0-9一二三四五六七八九十]+[）)]\s*/.test(p)) {
+  } else if (
+    /^\d+\.\d+\s+/.test(p) ||
+    /^[（(][0-9一二三四五六七八九十]+[）)]\s+\S/.test(p)
+  ) {
     level = 2;
   }
 

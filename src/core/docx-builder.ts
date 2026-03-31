@@ -51,8 +51,11 @@ function textRun(
 }
 
 function baseParagraph(text: string): Paragraph {
+  const normalized = text.trim();
+  const inlineChildren = buildInlineMathChildren(normalized);
+
   return new Paragraph({
-    children: [textRun(text, FONT_CN_SONG, 24)],
+    children: inlineChildren,
     alignment: AlignmentType.JUSTIFIED,
     indent: {
       firstLine: TWO_CHAR_TWIP,
@@ -157,9 +160,16 @@ function normalizeLatexLikeText(text: string): string {
   }
 
   output = output
+    .replace(/\\tau/g, "τ")
+    .replace(/\\alpha/g, "α")
+    .replace(/\\beta/g, "β")
+    .replace(/\\gamma/g, "γ")
+    .replace(/\\Delta/g, "Δ")
+    .replace(/\\delta/g, "δ")
     .replace(/\\text\{([^{}]*)\}/g, "$1")
     .replace(/\\mathrm\{([^{}]*)\}/g, "$1")
     .replace(/\\mathbf\{([^{}]*)\}/g, "$1")
+    .replace(/\\dot\{([^{}]+)\}/g, "$1̇")
     .replace(/\\left/g, "")
     .replace(/\\right/g, "")
     .replace(/\\cdot/g, "·")
@@ -171,14 +181,61 @@ function normalizeLatexLikeText(text: string): string {
     .replace(/\\int/g, "∫")
     .replace(/\\sqrt/g, "√")
     .replace(/\\_/g, "_")
+    .replace(/\\([A-Za-z]+)/g, "$1")
     .replace(/([A-Za-z0-9)])_\{([^{}]+)\}/g, "$1_$2")
+    .replace(/([A-Za-z0-9)])_([A-Za-z0-9]+)/g, "$1_$2")
     .replace(/([A-Za-z0-9)])\^\{([^{}]+)\}/g, "$1^$2")
+    .replace(/([A-Za-z0-9)])\^([A-Za-z0-9]+)/g, "$1^$2")
     .replace(/[{}]/g, "")
     .replace(/\s*[：:]\s*$/, "")
     .replace(/\s+/g, " ")
     .trim();
 
   return output;
+}
+
+function hasInlineMath(text: string): boolean {
+  return /\$[^$\n]+\$/.test(text);
+}
+
+function buildInlineMathChildren(text: string): Array<TextRun | Math> {
+  const children: Array<TextRun | Math> = [];
+  const regex = /\$([^$\n]+)\$/g;
+  let cursor = 0;
+
+  for (const match of text.matchAll(regex)) {
+    const start = match.index ?? 0;
+    const end = start + match[0].length;
+    const plain = text.slice(cursor, start);
+    if (plain) {
+      children.push(textRun(plain, FONT_CN_SONG, 24));
+    }
+
+    const mathText = normalizeLatexLikeText(match[1]);
+    if (mathText) {
+      children.push(
+        new Math({
+          children: [new MathRun(mathText)],
+        }),
+      );
+    }
+    cursor = end;
+  }
+
+  const tail = text.slice(cursor);
+  if (tail) {
+    children.push(textRun(tail, FONT_CN_SONG, 24));
+  }
+
+  if (children.length === 0) {
+    children.push(textRun(text, FONT_CN_SONG, 24));
+  }
+
+  return children;
+}
+
+function isEquationNumberOnlyLine(text: string): boolean {
+  return /^[（(]\d+[）)]$/.test(text.trim()) || /^\(\d+\)$/.test(text.trim());
 }
 
 function normalizeCaptionTitle(text: string): string {
@@ -342,8 +399,17 @@ function buildBody(structured: StructuredDoc): FileChild[] {
       continue;
     }
 
+    if (isEquationNumberOnlyLine(block.text)) {
+      continue;
+    }
+
     if (isLikelyEquation(block.text)) {
       paragraphs.push(equationParagraph(block.text, equationIndexByKey, equationState));
+      continue;
+    }
+
+    if (hasInlineMath(block.text)) {
+      paragraphs.push(baseParagraph(block.text));
       continue;
     }
 

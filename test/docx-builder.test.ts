@@ -67,4 +67,34 @@ describe("docx-builder", () => {
     expect(docContent).toContain("表1 算法参数对照表");
     expect(docContent).toContain("图1　系统总体架构图");
   });
+
+  it("should render inline markdown math as editable math nodes", async () => {
+    const structured: StructuredDoc = {
+      mode: "official",
+      title: "段内公式测试",
+      blocks: [
+        {
+          type: "paragraph",
+          level: 0,
+          text: "（1）任务进度奖励（$R_{\\text{task}}$）： 该项用于引导灵巧手建立有效抓取。",
+        },
+        {
+          type: "paragraph",
+          level: 0,
+          text: "定义为所有关节实际输出扭矩 $\\tau_i$ 与角速度 $\\dot{q}_i$ 绝对乘积的求和。",
+        },
+      ],
+      stats: { paragraphCount: 2, headingCount: 0, referenceCount: 0 },
+    };
+
+    const bytes = await buildDocx(structured);
+    const zip = await JSZip.loadAsync(bytes);
+    const documentXml = await zip.file("word/document.xml")?.async("string");
+    const docContent = documentXml ?? "";
+
+    expect(docContent).toContain("<m:oMath>");
+    expect(docContent).toContain("R_task");
+    expect(docContent).toContain("τ_i");
+    expect(docContent).toContain("q̇_i");
+  });
 });

@@ -172,4 +172,21 @@ describe("analyzeText", () => {
     expect(chapter).toBeDefined();
     expect(chapter?.level).toBe(1);
   });
+
+  it("should not classify standalone equation number marker as heading", () => {
+    const text = [
+      "公式段",
+      "",
+      "R_{\\text{energy}} = - \\sum_{i=1}^{7} |\\tau_i \\cdot \\dot{q}_i|",
+      "",
+      "(2)",
+      "",
+      "后续说明文本。",
+    ].join("\n");
+
+    const result = analyzeText(text, "thesis");
+    const markerAsHeading = result.blocks.find((block) => block.type === "heading" && block.text === "(2)");
+
+    expect(markerAsHeading).toBeUndefined();
+  });
 });
