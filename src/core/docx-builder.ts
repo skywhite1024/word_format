@@ -18,9 +18,6 @@ import {
   PageNumber,
   type ParagraphChild,
   Paragraph,
-  Tab,
-  TabStopPosition,
-  TabStopType,
   Table,
   TableCell,
   TableOfContents,
@@ -722,7 +719,7 @@ function equationParagraph(
   raw: string,
   equationIndexByKey: Map<string, number>,
   state: { current: number },
-): Paragraph {
+): Paragraph[] {
   const equationText = normalizeLatexLikeText(extractEquationText(raw));
   const key = normalizeEquationKey(equationText);
   const existing = equationIndexByKey.get(key);
@@ -732,29 +729,35 @@ function equationParagraph(
     equationIndexByKey.set(key, equationNumber);
   }
 
-  return new Paragraph({
+  const equationLine = new Paragraph({
     alignment: AlignmentType.CENTER,
     indent: { firstLine: 0 },
     spacing: {
       before: 120,
-      after: 120,
+      after: 0,
       line: 360,
       lineRule: LineRuleType.AUTO,
     },
-    tabStops: [
-      {
-        type: TabStopType.RIGHT,
-        position: TabStopPosition.MAX,
-      },
-    ],
     children: [
       new Math({
         children: buildMathComponentsFromExpression(equationText),
       }),
-      new TextRun({ children: [new Tab()] }),
-      textRun(`(${equationNumber})`, FONT_CN_SONG, 21),
     ],
   });
+
+  const numberLine = new Paragraph({
+    alignment: AlignmentType.RIGHT,
+    indent: { firstLine: 0 },
+    spacing: {
+      before: 0,
+      after: 120,
+      line: 360,
+      lineRule: LineRuleType.AUTO,
+    },
+    children: [textRun(`#(${equationNumber})`, FONT_CN_SONG, 21)],
+  });
+
+  return [equationLine, numberLine];
 }
 
 function tableCaptionParagraph(index: number, title: string): Paragraph {
@@ -766,7 +769,7 @@ function tableCaptionParagraph(index: number, title: string): Paragraph {
       line: 360,
       lineRule: LineRuleType.AUTO,
     },
-    children: [textRun(`表${index} ${title}`, FONT_CN_HEI, 21, true)],
+    children: [textRun(`表${index} ${title}`, FONT_CN_HEI, 21, false)],
   });
 }
 
@@ -779,7 +782,7 @@ function figureCaptionParagraph(index: number, title: string): Paragraph {
       line: 360,
       lineRule: LineRuleType.AUTO,
     },
-    children: [textRun(`图${index}　${title}`, FONT_CN_HEI, 21, true)],
+    children: [textRun(`图${index}　${title}`, FONT_CN_HEI, 21, false)],
   });
 }
 
@@ -855,7 +858,7 @@ function buildBody(structured: StructuredDoc): FileChild[] {
     }
 
     if (isLikelyEquation(block.text)) {
-      paragraphs.push(equationParagraph(block.text, equationIndexByKey, equationState));
+      paragraphs.push(...equationParagraph(block.text, equationIndexByKey, equationState));
       continue;
     }
 

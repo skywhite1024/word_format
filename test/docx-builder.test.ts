@@ -63,11 +63,13 @@ describe("docx-builder", () => {
     expect(docContent).toContain("<m:t>R</m:t>");
     expect(docContent).toContain("<m:t>total</m:t>");
     expect(docContent).not.toContain("\\text{");
-    expect(docContent).toContain("(1)");
-    expect(docContent).not.toContain("(2)");
+    expect(docContent).toContain("#(1)");
+    expect(docContent).not.toContain("#(2)");
     expect(docContent).toContain("第 1 章　绪论");
     expect(docContent).toContain("表1 算法参数对照表");
     expect(docContent).toContain("图1　系统总体架构图");
+    expect(docContent).toContain('<w:jc w:val="right"');
+    expect(docContent).toContain('<w:jc w:val="center"');
   });
 
   it("should render inline markdown math as editable math nodes", async () => {
@@ -372,5 +374,26 @@ describe("docx-builder", () => {
 
     expect(docContent).toContain('<w:jc w:val="center"');
     expect(docContent).toContain('<m:oMath>');
+  });
+
+  it("should render figure and table captions without bold", async () => {
+    const structured: StructuredDoc = {
+      mode: "official",
+      title: "题注样式测试",
+      blocks: [
+        { type: "paragraph", level: 0, text: "表 1-1 参数对照" },
+        { type: "paragraph", level: 0, text: "图 1-1 结构示意" },
+      ],
+      stats: { paragraphCount: 2, headingCount: 0, referenceCount: 0 },
+    };
+
+    const bytes = await buildDocx(structured);
+    const zip = await JSZip.loadAsync(bytes);
+    const documentXml = await zip.file("word/document.xml")?.async("string");
+    const docContent = documentXml ?? "";
+
+    expect(docContent).toContain("表1 参数对照");
+    expect(docContent).toContain("图1　结构示意");
+    expect(docContent).toContain('<w:b w:val="false"');
   });
 });
