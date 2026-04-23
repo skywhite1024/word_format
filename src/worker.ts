@@ -2,6 +2,8 @@ import { analyzeText, sanitizeMarkdownText } from "./core/analyzer";
 import { buildDocx } from "./core/docx-builder";
 import { structureTextWithLlm } from "./core/llm-structurer";
 import { renderPreview } from "./core/preview";
+import { importSharedConversation } from "./core/share-import";
+import { deepRepairText } from "./core/text-repair";
 import type { Mode, StructuredDoc } from "./core/types";
 
 export interface Env {
@@ -17,6 +19,14 @@ interface RequestPayload {
   mode: Mode;
   useLlm: boolean;
   mathItalic: boolean;
+}
+
+interface TextOnlyPayload {
+  text: string;
+}
+
+interface ShareUrlPayload {
+  url: string;
 }
 
 function jsonResponse(data: unknown, status = 200): Response {
@@ -78,6 +88,32 @@ async function parsePayload(request: Request): Promise<RequestPayload | null> {
       useLlm: sanitizeUseLlm(payload.useLlm),
       mathItalic: sanitizeMathItalic(payload.mathItalic),
     };
+  } catch (error) {
+    if (error instanceof Error) {
+      throw error;
+    }
+    throw new Error("请求体解析失败。");
+  }
+}
+
+async function parseTextOnlyPayload(request: Request): Promise<TextOnlyPayload | null> {
+  try {
+    const payload = (await request.json()) as { text?: unknown };
+    const text = typeof payload.text === "string" ? payload.text : "";
+    return text.trim() ? { text } : null;
+  } catch (error) {
+    if (error instanceof Error) {
+      throw error;
+    }
+    throw new Error("请求体解析失败。");
+  }
+}
+
+async function parseShareUrlPayload(request: Request): Promise<ShareUrlPayload | null> {
+  try {
+    const payload = (await request.json()) as { url?: unknown };
+    const url = typeof payload.url === "string" ? payload.url.trim() : "";
+    return url ? { url } : null;
   } catch (error) {
     if (error instanceof Error) {
       throw error;
@@ -174,6 +210,35 @@ export default {
         });
       } catch (error) {
         const message = error instanceof Error ? error.message : "文档导出失败";
+        return badRequest(message);
+      }
+    }
+
+    if (pathname === "/api/repair" && request.method === "POST") {
+      try {
+        const payload = await parseTextOnlyPayload(request);
+        if (!payload) return badRequest("text 不能为空");
+
+        const repaired = deepRepairText(payload.text);
+        return jsonResponse({
+          text: repaired,
+          changed: repaired !== payload.text,
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "深度修复失败";
+        return badRequest(message);
+      }
+    }
+
+    if (pathname === "/api/import/share" && request.method === "POST") {
+      try {
+        const payload = await parseShareUrlPayload(request);
+        if (!payload) return badRequest("url 不能为空");
+
+        const imported = await importSharedConversation(payload.url);
+        return jsonResponse(imported);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "分享链接导入失败";
         return badRequest(message);
       }
     }

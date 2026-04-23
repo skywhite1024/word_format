@@ -13,6 +13,8 @@
 - 自动识别标题层级（一级/二级/三级）与参考文献区块。
 - 正文分项 `1、`/`1.` 统一规范为 `（1）`（避免误判为标题）。
 - 导出 `.docx` 时应用规范字体、页边距、行距与目录（thesis）。
+- 单独支持 ChatGPT / Gemini 公开分享链接导入，避免与正文输入混用。
+- 支持“深度乱码修复”与浏览器打印式 PDF 导出。
 
 ## 文档排版能力
 
@@ -80,6 +82,8 @@ sequenceDiagram
 │       ├── analyzer.ts        # 规则分析与标题分级
 │       ├── llm-structurer.ts  # LLM 结构化与校验
 │       ├── docx-builder.ts    # DOCX 样式与构建
+│       ├── share-import.ts    # ChatGPT / Gemini 分享链接导入
+│       ├── text-repair.ts     # 深度乱码修复
 │       ├── preview.ts         # 预览文本渲染
 │       └── types.ts           # 类型定义
 ├── test/                      # 单元测试
@@ -127,6 +131,33 @@ npm run dev
 
 - `X-Format-Engine`
 - `X-Format-Fallback`
+
+### `POST /api/import/share`
+
+请求体：
+
+```json
+{
+  "url": "https://chatgpt.com/share/..."
+}
+```
+
+返回导入后的标题、来源平台与正文文本。目前支持：
+
+- `https://chatgpt.com/share/...`
+- `https://gemini.google.com/share/...`
+
+### `POST /api/repair`
+
+请求体：
+
+```json
+{
+  "text": "待修复文本"
+}
+```
+
+返回修复后的文本与 `changed` 标记，可用于处理 `\\n`、`\\uXXXX`、零宽字符等常见复制污染。
 
 ## 标题与分项规则（当前实现）
 

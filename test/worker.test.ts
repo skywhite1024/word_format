@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import worker from "../src/worker";
 
 describe("worker api", () => {
@@ -65,5 +65,127 @@ describe("worker api", () => {
     expect(data.structured.title).toBe("测试标题");
     expect(data.previewText).not.toContain("##");
     expect(data.previewText).not.toContain("**");
+  });
+
+  it("should repair escaped text payload", async () => {
+    const request = new Request("https://example.com/api/repair", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        text: "第一行\\n\\n第二行\\u4E2D\\u6587",
+      }),
+    });
+
+    const response = await worker.fetch(request, {
+      ASSETS: { fetch: async () => new Response("not found", { status: 404 }) },
+    } as any);
+
+    expect(response.status).toBe(200);
+    const data = (await response.json()) as { text: string; changed: boolean };
+    expect(data.changed).toBe(true);
+    expect(data.text).toContain("第一行");
+    expect(data.text).toContain("第二行中文");
+  });
+
+  it("should import gemini share content from reader markdown", async () => {
+    const originalFetch = globalThis.fetch;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          [
+            "Title: Gemini - direct access to Google AI",
+            "",
+            "URL Source: https://gemini.google.com/share/demo",
+            "",
+            "Markdown Content:",
+            "# **高三三角函数常用值与技巧**",
+            "",
+            "[https://gemini.google.com/share/demo](https://gemini.google.com/share/demo)",
+            "",
+            "Created with Pro Published today",
+            "",
+            "You said",
+            "用表格展示高三三角函数常用值",
+            "",
+            "这是整理后的正文。",
+          ].join("\n"),
+          {
+            status: 200,
+            headers: { "Content-Type": "text/plain; charset=utf-8" },
+          },
+        ),
+      ),
+    );
+
+    try {
+      const request = new Request("https://example.com/api/import/share", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          url: "https://gemini.google.com/share/demo",
+        }),
+      });
+
+      const response = await worker.fetch(request, {
+        ASSETS: { fetch: async () => new Response("not found", { status: 404 }) },
+      } as any);
+
+      expect(response.status).toBe(200);
+      const data = (await response.json()) as { source: string; title: string; text: string };
+      expect(data.source).toBe("gemini");
+      expect(data.title).toBe("高三三角函数常用值与技巧");
+      expect(data.text).toContain("## 你说");
+      expect(data.text).toContain("这是整理后的正文。");
+    } finally {
+      vi.stubGlobal("fetch", originalFetch);
+    }
+  });
+
+  it("should import chatgpt share content from page html", async () => {
+    const originalFetch = globalThis.fetch;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          [
+            "<html><head><title>ChatGPT - 测试标题</title></head><body>",
+            '<script>window.__reactRouterContext={};window.__reactRouterContext.streamController={enqueue(){}};</script>',
+            '<script nonce="test">',
+            'window.__reactRouterContext.streamController.enqueue("[{\\"_1\\":2},\\"pageTitle\\",\\"测试标题\\",\\"content_type\\",\\"text\\",\\"parts\\",[1],\\"请输出一个摘要\\",\\"content_type\\",\\"text\\",\\"parts\\",[2],\\"这是导入后的正文内容。\\"]");',
+            "</script>",
+            "</body></html>",
+          ].join(""),
+          {
+            status: 200,
+            headers: { "Content-Type": "text/html; charset=utf-8" },
+          },
+        ),
+      ),
+    );
+
+    try {
+      const request = new Request("https://example.com/api/import/share", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          url: "https://chatgpt.com/share/demo-id",
+        }),
+      });
+
+      const response = await worker.fetch(request, {
+        ASSETS: { fetch: async () => new Response("not found", { status: 404 }) },
+      } as any);
+
+      expect(response.status).toBe(200);
+      const data = (await response.json()) as { source: string; title: string; text: string };
+      expect(data.source).toBe("chatgpt");
+      expect(data.title).toBe("测试标题");
+      expect(data.text).toContain("# 测试标题");
+      expect(data.text).toContain("请输出一个摘要");
+      expect(data.text).toContain("这是导入后的正文内容。");
+    } finally {
+      vi.stubGlobal("fetch", originalFetch);
+    }
   });
 });
