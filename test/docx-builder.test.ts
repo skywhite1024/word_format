@@ -224,7 +224,9 @@ describe("docx-builder", () => {
 
     expect(docContent).toContain("<m:sSubSup>");
     expect(docContent).toContain("<m:t>∑</m:t>");
-    expect(docContent).toContain("<m:t>i=1</m:t>");
+    expect(docContent).toContain("<m:t>i</m:t>");
+    expect(docContent).toContain("<m:t>=</m:t>");
+    expect(docContent).toContain("<m:t>1</m:t>");
     expect(docContent).toContain("<m:t>7</m:t>");
   });
 
@@ -396,5 +398,55 @@ describe("docx-builder", () => {
     expect(docContent).toContain("表1 参数对照");
     expect(docContent).toContain("图1 结构示意");
     expect(docContent).toContain('<w:b w:val="false"');
+  });
+
+  it("should preserve nested scripts and greek symbols in complex formulas", async () => {
+    const structured: StructuredDoc = {
+      mode: "official",
+      title: "复杂公式测试",
+      blocks: [
+        {
+          type: "paragraph",
+          level: 0,
+          text: [
+            "[",
+            "\\mathcal{L}(\\theta,\\phi;x)",
+            "## \\mathbb{E}_{q_\\phi(z\\mid x)}[\\log p_\\theta(x\\mid z)]",
+            "D_{KL}(q_\\phi(z\\mid x)|p(z))",
+            "]",
+          ].join("\n"),
+        },
+        {
+          type: "paragraph",
+          level: 0,
+          text: "$$V^\\pi(s)=\\mathbb{E}_{\\pi}\\left[\\sum_{t=0}^{\\infty}\\gamma^t r_t \\mid s_0=s\\right]$$",
+        },
+        {
+          type: "paragraph",
+          level: 0,
+          text: "$$\\hat{m}_t=\\frac{m_t}{1-\\beta_1^t},\\qquad \\hat{v}_t=\\frac{v_t}{1-\\beta_2^t}$$",
+        },
+      ],
+      stats: { paragraphCount: 3, headingCount: 0, referenceCount: 0 },
+    };
+
+    const bytes = await buildDocx(structured);
+    const zip = await JSZip.loadAsync(bytes);
+    const documentXml = await zip.file("word/document.xml")?.async("string");
+    const docContent = documentXml ?? "";
+
+    expect(docContent).toContain("<m:oMath>");
+    expect(docContent).toContain("<m:sSub>");
+    expect(docContent).toContain("<m:sSup>");
+    expect(docContent).toContain("<m:sSubSup>");
+    expect(docContent).toContain("<m:t>θ</m:t>");
+    expect(docContent).toContain("<m:t>φ</m:t>");
+    expect(docContent).toContain("<m:t>π</m:t>");
+    expect(docContent).toContain("<m:t>∞</m:t>");
+    expect(docContent).toContain("<m:t>q</m:t>");
+    expect(docContent).toContain("<m:t>KL</m:t>");
+    expect(docContent).toContain("(1)");
+    expect(docContent).toContain("(2)");
+    expect(docContent).toContain("(3)");
   });
 });

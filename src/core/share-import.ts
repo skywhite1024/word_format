@@ -69,6 +69,70 @@ function parseReaderMarkdown(readerOutput: string): string {
   return readerOutput.slice(index + marker.length).trim();
 }
 
+function extractReaderTitle(readerOutput: string): string {
+  const match = readerOutput.match(/^Title:\s*(.+)$/m);
+  return match?.[1]?.trim() ?? "";
+}
+
+function cleanChatGptReaderMarkdown(
+  markdown: string,
+  shareUrl: string,
+  fallbackTitle = "",
+): { title: string; text: string } {
+  const lines = markdown
+    .replace(/\r\n/g, "\n")
+    .split("\n")
+    .map((line) => line.trimEnd());
+
+  const titleLine = lines.find((line) => /^#\s+/.test(line)) ?? "";
+  const title =
+    titleLine.replace(/^#\s+/, "").replace(/^ChatGPT\s*-\s*/i, "").trim() ||
+    fallbackTitle.replace(/^ChatGPT\s*-\s*/i, "").trim();
+  const titleIndex = titleLine ? lines.indexOf(titleLine) : 0;
+
+  const workingLines = lines
+    .slice(titleIndex >= 0 ? titleIndex + 1 : 0)
+    .filter((line) => {
+      const trimmed = line.trim();
+      if (!trimmed) return true;
+      if (trimmed === shareUrl) return false;
+      if (trimmed.includes("chatgpt.com/share/")) return false;
+      if (
+        /^(Skip to content|Chat history|New chat|Search chats|Images|Apps|Deep research|See plans and pricing|Settings|Help|Log in|Sign up for free|Voice|ChatGPT)$/i.test(
+          trimmed,
+        )
+      ) {
+        return false;
+      }
+      if (/^This is a copy of a conversation/i.test(trimmed)) return false;
+      if (/^Report conversation$/i.test(trimmed)) return false;
+      if (/^Thought for \d+s$/i.test(trimmed)) return false;
+      if (/^Get responses tailored to you$/i.test(trimmed)) return false;
+      if (/^Log in to get answers based on saved chats/i.test(trimmed)) return false;
+      return true;
+    });
+
+  const compactLines = workingLines.filter((line) => line.trim() !== "");
+  if (compactLines.length === 0) {
+    return { title, text: title ? `# ${title}` : "" };
+  }
+
+  const firstPrompt = compactLines[0] ?? "";
+  const answerLines = compactLines.slice(1);
+
+  if (answerLines.length === 0) {
+    return {
+      title,
+      text: normalizeImportText(title, [firstPrompt]),
+    };
+  }
+
+  return {
+    title,
+    text: normalizeImportText(title, [`## 你说\n${firstPrompt}`, `## ChatGPT\n${answerLines.join("\n")}`]),
+  };
+}
+
 function cleanGeminiReaderMarkdown(markdown: string, shareUrl: string): { title: string; text: string } {
   const lines = markdown
     .replace(/\r\n/g, "\n")
@@ -226,6 +290,22 @@ async function importGeminiShare(url: URL): Promise<ImportedShareDocument> {
 }
 
 async function importChatGptShare(url: URL): Promise<ImportedShareDocument> {
+  try {
+    const readerOutput = await fetchText(`https://r.jina.ai/http://${url.href}`);
+    const markdown = parseReaderMarkdown(readerOutput);
+    const parsed = cleanChatGptReaderMarkdown(markdown, url.href, extractReaderTitle(readerOutput));
+    if (parsed.text) {
+      return {
+        source: "chatgpt",
+        title: parsed.title,
+        text: parsed.text,
+        url: url.href,
+      };
+    }
+  } catch {
+    // ChatGPT 分享页在 Worker 环境中直连经常被拒绝，优先尝试公开阅读代理，失败后再回退。
+  }
+
   const html = await fetchText(url.href);
   const title = extractChatGptTitle(html);
   const parts = extractChatGptMessageParts(html);

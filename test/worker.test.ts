@@ -142,23 +142,34 @@ describe("worker api", () => {
     }
   });
 
-  it("should import chatgpt share content from page html", async () => {
+  it("should import chatgpt share content from reader markdown", async () => {
     const originalFetch = globalThis.fetch;
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue(
         new Response(
           [
-            "<html><head><title>ChatGPT - 测试标题</title></head><body>",
-            '<script>window.__reactRouterContext={};window.__reactRouterContext.streamController={enqueue(){}};</script>',
-            '<script nonce="test">',
-            'window.__reactRouterContext.streamController.enqueue("[{\\"_1\\":2},\\"pageTitle\\",\\"测试标题\\",\\"content_type\\",\\"text\\",\\"parts\\",[1],\\"请输出一个摘要\\",\\"content_type\\",\\"text\\",\\"parts\\",[2],\\"这是导入后的正文内容。\\"]");',
-            "</script>",
-            "</body></html>",
-          ].join(""),
+            "Title: 来看看这段对话",
+            "",
+            "URL Source: https://chatgpt.com/share/demo-id",
+            "",
+            "Markdown Content:",
+            "# ChatGPT - 测试标题",
+            "",
+            "Skip to content",
+            "Chat history",
+            "New chat",
+            "This is a copy of a conversation between ChatGPT & Anonymous.",
+            "Report conversation",
+            "请输出一个摘要",
+            "",
+            "Thought for 31s",
+            "",
+            "这是导入后的正文内容。",
+          ].join("\n"),
           {
             status: 200,
-            headers: { "Content-Type": "text/html; charset=utf-8" },
+            headers: { "Content-Type": "text/plain; charset=utf-8" },
           },
         ),
       ),
@@ -182,6 +193,57 @@ describe("worker api", () => {
       expect(data.source).toBe("chatgpt");
       expect(data.title).toBe("测试标题");
       expect(data.text).toContain("# 测试标题");
+      expect(data.text).toContain("## 你说");
+      expect(data.text).toContain("## ChatGPT");
+      expect(data.text).toContain("请输出一个摘要");
+      expect(data.text).toContain("这是导入后的正文内容。");
+    } finally {
+      vi.stubGlobal("fetch", originalFetch);
+    }
+  });
+
+  it("should fallback to chatgpt share page html when reader import fails", async () => {
+    const originalFetch = globalThis.fetch;
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockRejectedValueOnce(new Error("reader unavailable"))
+        .mockResolvedValueOnce(
+          new Response(
+            [
+              "<html><head><title>ChatGPT - 测试标题</title></head><body>",
+              '<script>window.__reactRouterContext={};window.__reactRouterContext.streamController={enqueue(){}};</script>',
+              '<script nonce="test">',
+              'window.__reactRouterContext.streamController.enqueue("[{\\"_1\\":2},\\"pageTitle\\",\\"测试标题\\",\\"content_type\\",\\"text\\",\\"parts\\",[1],\\"请输出一个摘要\\",\\"content_type\\",\\"text\\",\\"parts\\",[2],\\"这是导入后的正文内容。\\"]");',
+              "</script>",
+              "</body></html>",
+            ].join(""),
+            {
+              status: 200,
+              headers: { "Content-Type": "text/html; charset=utf-8" },
+            },
+          ),
+        ),
+    );
+
+    try {
+      const request = new Request("https://example.com/api/import/share", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          url: "https://chatgpt.com/share/demo-id",
+        }),
+      });
+
+      const response = await worker.fetch(request, {
+        ASSETS: { fetch: async () => new Response("not found", { status: 404 }) },
+      } as any);
+
+      expect(response.status).toBe(200);
+      const data = (await response.json()) as { source: string; title: string; text: string };
+      expect(data.source).toBe("chatgpt");
+      expect(data.title).toBe("测试标题");
       expect(data.text).toContain("请输出一个摘要");
       expect(data.text).toContain("这是导入后的正文内容。");
     } finally {

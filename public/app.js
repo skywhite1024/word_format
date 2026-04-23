@@ -158,12 +158,34 @@ function extractEquationText(raw) {
     return blockMatch[1].trim();
   }
 
+  const latexBlock = text.match(/^\\\[([\s\S]+)\\\]$/);
+  if (latexBlock) {
+    return latexBlock[1]
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line && !/^=+$/.test(line))
+      .map((line) => line.replace(/^#+\s*/, ""))
+      .join(" ")
+      .trim();
+  }
+
+  const bracketBlock = text.match(/^\[([\s\S]+)\]$/);
+  if (bracketBlock) {
+    return bracketBlock[1]
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line && !/^=+$/.test(line))
+      .map((line) => line.replace(/^#+\s*/, ""))
+      .join(" ")
+      .trim();
+  }
+
   const inlineMatch = text.match(/^\$([^\n]+)\$$/);
   if (inlineMatch) {
     return inlineMatch[1].trim();
   }
 
-  return text.replace(/\s+\(\d+\)\s*$/, "").trim();
+  return text.replace(/\s+\(\d+\)\s*$/, "").replace(/\s+/g, " ").trim();
 }
 
 function normalizeCaptionTitle(raw) {
@@ -190,6 +212,7 @@ function isStandaloneInlineMathLine(text) {
 
 function isLikelyEquation(text) {
   const trimmed = text.trim();
+  const isBracketBlock = /^\[[\s\S]+]$/.test(trimmed) || /^\\\[[\s\S]+\\\]$/.test(trimmed);
   if (/^\$\$[\s\S]+\$\$$/.test(trimmed)) {
     return true;
   }
@@ -197,14 +220,27 @@ function isLikelyEquation(text) {
     return true;
   }
 
-  const hasMathKeyword = /\\frac|\\sum|\\int|\\sqrt|∑|∫|√/.test(trimmed);
+  const hasMathKeyword = /\\frac|\\sum|\\int|\\sqrt|\\mathbb|\\mathcal|\\hat|\\tilde|∑|∫|√|∞|⊙/.test(trimmed);
+  const hasMathCommand = /\\[A-Za-z]+/.test(trimmed);
   const hasEquationOperator = /[=+\-×·]/.test(trimmed);
   const hasMathContext = /[_^]|\\text|\\dot|[A-Za-z]\d|[A-Za-z]_[A-Za-z0-9]/.test(trimmed);
-  return hasMathKeyword || (hasEquationOperator && hasMathContext);
+  return isBracketBlock || hasMathKeyword || hasMathCommand || (hasEquationOperator && hasMathContext);
 }
 
 function formatInlineContent(text) {
   return escapeHtml(text)
+    .replace(/\\theta/g, "θ")
+    .replace(/\\phi/g, "φ")
+    .replace(/\\pi/g, "π")
+    .replace(/\\mu/g, "μ")
+    .replace(/\\sigma/g, "σ")
+    .replace(/\\eta/g, "η")
+    .replace(/\\epsilon/g, "ε")
+    .replace(/\\lambda/g, "λ")
+    .replace(/\\infty/g, "∞")
+    .replace(/\\mid/g, "|")
+    .replace(/\\mathbb\{([^{}]+)\}/g, "$1")
+    .replace(/\\mathcal\{([^{}]+)\}/g, "$1")
     .replace(/`([^`\n]+)`/g, '<span class="inline-code">$1</span>')
     .replace(/\$([^$\n]+)\$/g, '<span class="inline-math">$1</span>')
     .replace(/\[(\d+)\]/g, '<span class="citation">[$1]</span>');

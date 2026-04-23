@@ -175,10 +175,32 @@ function extractEquationText(raw: string): string {
   const blockMath = t.match(/^\$\$([\s\S]+)\$\$$/);
   if (blockMath) return blockMath[1].trim();
 
+  const latexBlock = t.match(/^\\\[([\s\S]+)\\\]$/);
+  if (latexBlock) {
+    return latexBlock[1]
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line && !/^=+$/.test(line))
+      .map((line) => line.replace(/^#+\s*/, ""))
+      .join(" ")
+      .trim();
+  }
+
+  const bracketBlock = t.match(/^\[([\s\S]+)\]$/);
+  if (bracketBlock) {
+    return bracketBlock[1]
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line && !/^=+$/.test(line))
+      .map((line) => line.replace(/^#+\s*/, ""))
+      .join(" ")
+      .trim();
+  }
+
   const inlineMath = t.match(/^\$([^\n]+)\$$/);
   if (inlineMath) return inlineMath[1].trim();
 
-  return t;
+  return t.replace(/\s+/g, " ").trim();
 }
 
 function normalizeLatexLikeText(text: string): string {
@@ -189,15 +211,41 @@ function normalizeLatexLikeText(text: string): string {
   }
 
   output = output
+    .replace(/([A-Za-zΑ-Ωα-ωτΔΣ])\*\{/g, "$1_{")
+    .replace(/([A-Za-zΑ-Ωα-ωτΔΣ])\*([A-Za-z\\])/g, "$1_$2")
+    .replace(/\\hat\{([^{}]+)\}/g, "$1̂")
+    .replace(/\\tilde\{([^{}]+)\}/g, "$1̃")
+    .replace(/\\bar\{([^{}]+)\}/g, "$1̄")
     .replace(/\\tau/g, "τ")
+    .replace(/\\theta/g, "θ")
+    .replace(/\\phi/g, "φ")
+    .replace(/\\pi/g, "π")
+    .replace(/\\mu/g, "μ")
+    .replace(/\\sigma/g, "σ")
+    .replace(/\\lambda/g, "λ")
+    .replace(/\\eta/g, "η")
+    .replace(/\\epsilon/g, "ε")
+    .replace(/\\omega/g, "ω")
+    .replace(/\\Omega/g, "Ω")
     .replace(/\\alpha/g, "α")
     .replace(/\\beta/g, "β")
     .replace(/\\gamma/g, "γ")
     .replace(/\\Delta/g, "Δ")
     .replace(/\\delta/g, "δ")
+    .replace(/\\infty/g, "∞")
+    .replace(/\\mid/g, "|")
+    .replace(/\\odot/g, "⊙")
+    .replace(/\\to/g, "→")
+    .replace(/\\sim/g, "~")
+    .replace(/\\partial/g, "∂")
     .replace(/\\text\{([^{}]*)\}/g, "$1")
     .replace(/\\mathrm\{([^{}]*)\}/g, "$1")
     .replace(/\\mathbf\{([^{}]*)\}/g, "$1")
+    .replace(/\\mathbb\{([^{}]*)\}/g, "$1")
+    .replace(/\\mathcal\{([^{}]*)\}/g, "$1")
+    .replace(/\\operatorname\{([^{}]*)\}/g, "$1")
+    .replace(/\\arg\\max/g, "argmax")
+    .replace(/\\arg\\min/g, "argmin")
     .replace(/\\dot\{([^{}]+)\}/g, "$1̇")
     .replace(/\\left/g, "")
     .replace(/\\right/g, "")
@@ -212,12 +260,12 @@ function normalizeLatexLikeText(text: string): string {
     .replace(/\\sqrt/g, "√")
     .replace(/\\_/g, "_")
     .replace(/\\([A-Za-z]+)/g, "$1")
-    .replace(/([A-Za-z0-9)])_\{([^{}]+)\}/g, "$1_$2")
-    .replace(/([A-Za-z0-9)])_([A-Za-z0-9]+)/g, "$1_$2")
-    .replace(/([A-Za-z0-9)])\^\{([^{}]+)\}/g, "$1^$2")
-    .replace(/([A-Za-z0-9)])\^([A-Za-z0-9]+)/g, "$1^$2")
-    .replace(/[{}]/g, "")
+    .replace(/([A-Za-zΑ-Ωα-ωτΔΣ0-9)\]̂̃̄])_\{([^{}]+)\}/g, "$1_$2")
+    .replace(/([A-Za-zΑ-Ωα-ωτΔΣ0-9)\]̂̃̄])_([A-Za-zΑ-Ωα-ωτΔΣ0-9∞]+)/g, "$1_$2")
+    .replace(/([A-Za-zΑ-Ωα-ωτΔΣ0-9)\]̂̃̄])\^\{([^{}]+)\}/g, "$1^$2")
+    .replace(/([A-Za-zΑ-Ωα-ωτΔΣ0-9)\]̂̃̄])\^([A-Za-zΑ-Ωα-ωτΔΣ0-9∞+\-]+)/g, "$1^$2")
     .replace(/\s*[：:]\s*$/, "")
+    .replace(/[{}]/g, "")
     .replace(/\s+/g, " ")
     .trim();
 
@@ -233,7 +281,7 @@ function isScriptBaseSymbol(ch: string): boolean {
 }
 
 function isMathBaseChar(ch: string): boolean {
-  return /[A-Za-z0-9Α-Ωα-ωτΔΣ∑∫√̇]/.test(ch);
+  return /[A-Za-z0-9Α-Ωα-ωτΔΣ∑∫√̇̂̃̄]/.test(ch);
 }
 
 function isScriptTerminator(ch: string): boolean {
@@ -277,8 +325,8 @@ function readScriptValue(text: string, start: number): { value: string; end: num
 
 function createScriptMathComponent(base: string, subScript?: string, superScript?: string): MathComponent {
   const baseChildren: MathComponent[] = [new MathRun(base)];
-  const subChildren: MathComponent[] = subScript ? [new MathRun(subScript)] : [];
-  const superChildren: MathComponent[] = superScript ? [new MathRun(superScript)] : [];
+  const subChildren: MathComponent[] = subScript ? buildMathComponentsFromExpression(subScript) : [];
+  const superChildren: MathComponent[] = superScript ? buildMathComponentsFromExpression(superScript) : [];
 
   if (subChildren.length > 0 && superChildren.length > 0) {
     return new MathSubSuperScript({
@@ -399,7 +447,7 @@ function isInlineMathToken(token: string): boolean {
 
 function buildInlineMathChildrenFromToken(text: string): Array<TextRun | Math> {
   const children: Array<TextRun | Math> = [];
-  const regex = /[A-Za-zΑ-Ωα-ωτΔΣ][A-Za-z0-9̇]*(?:_[A-Za-z0-9]+)?(?:\^[A-Za-z0-9]+)?/g;
+  const regex = /[A-Za-zΑ-Ωα-ωτΔΣ][A-Za-z0-9̇̂̃̄]*(?:_[A-Za-zΑ-Ωα-ω0-9+\-∞]+)?(?:\^[A-Za-zΑ-Ωα-ω0-9+\-∞]+)?/g;
   let cursor = 0;
 
   for (const match of text.matchAll(regex)) {
@@ -683,15 +731,19 @@ function buildDocxTable(rows: string[][]): Table {
 }
 
 function isLikelyEquation(raw: string): boolean {
+  const trimmed = raw.trim();
+  const isBracketBlock = /^\[[\s\S]+]$/.test(trimmed) || /^\\\[[\s\S]+\\\]$/.test(trimmed);
   const text = extractEquationText(raw);
   if (!text) return false;
-  if (text.length > 180) return false;
-  if (/[。！？；：]/.test(text)) return false;
+  if (!isBracketBlock && text.length > 180) return false;
+  if (!isBracketBlock && /[。！？；：]/.test(text)) return false;
 
-  const hasMathKeyword = /\\frac|\\sum|\\int|\\sqrt|∑|∫|√/.test(text);
+  const hasMathKeyword = /\\frac|\\sum|\\int|\\sqrt|\\mathbb|\\mathcal|\\hat|\\tilde|∑|∫|√|∞|⊙/.test(raw);
+  const hasMathCommand = /\\[A-Za-z]+/.test(raw);
   const hasEquationOperator = /[=<>≤≥]/.test(text);
-  const hasMathContext = /[A-Za-zα-ωΑ-Ω0-9]/.test(text) && /[+\-*/^=<>≤≥×÷]/.test(text);
-  return hasMathKeyword || (hasEquationOperator && hasMathContext);
+  const hasScriptContext = /[_^]/.test(text);
+  const hasMathContext = /[A-Za-zα-ωΑ-Ω0-9]/.test(text) && /[+\-*/^=<>≤≥×÷_|[\]()]/.test(text);
+  return isBracketBlock || hasMathKeyword || hasMathCommand || hasScriptContext || (hasEquationOperator && hasMathContext);
 }
 
 function isStandaloneInlineMathLine(text: string): boolean {
