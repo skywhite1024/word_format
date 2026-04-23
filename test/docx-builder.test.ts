@@ -1,4 +1,4 @@
-import JSZip from "jszip";
+﻿import JSZip from "jszip";
 import { describe, expect, it } from "vitest";
 import { buildDocx } from "../src/core/docx-builder";
 import type { StructuredDoc } from "../src/core/types";
@@ -222,8 +222,8 @@ describe("docx-builder", () => {
     const documentXml = await zip.file("word/document.xml")?.async("string");
     const docContent = documentXml ?? "";
 
-    expect(docContent).toContain("<m:sSubSup>");
-    expect(docContent).toContain("<m:t>∑</m:t>");
+    expect(docContent).toContain("<m:nary>");
+    expect(docContent).toContain('<m:chr m:val="∑"/>');
     expect(docContent).toContain("<m:t>i</m:t>");
     expect(docContent).toContain("<m:t>=</m:t>");
     expect(docContent).toContain("<m:t>1</m:t>");
@@ -448,5 +448,35 @@ describe("docx-builder", () => {
     expect(docContent).toContain("(1)");
     expect(docContent).toContain("(2)");
     expect(docContent).toContain("(3)");
+  });
+
+  it("should emit native fraction radical and n-ary nodes for advanced formulas", async () => {
+    const structured: StructuredDoc = {
+      mode: "official",
+      title: "Advanced Formula Structures",
+      blocks: [
+        {
+          type: "paragraph",
+          level: 0,
+          text: "[\\text{Attention}(Q,K,V)=\\text{softmax}\\left(\\frac{QK^T}{\\sqrt{d_k}}\\right)V]",
+        },
+        {
+          type: "paragraph",
+          level: 0,
+          text: "[V^\\pi(s)=\\mathbb{E}_{\\pi}\\left[\\sum_{t=0}^{\\infty}\\gamma^t r_t \\mid s_0=s\\right]]",
+        },
+      ],
+      stats: { paragraphCount: 2, headingCount: 0, referenceCount: 0 },
+    };
+
+    const bytes = await buildDocx(structured);
+    const zip = await JSZip.loadAsync(bytes);
+    const documentXml = await zip.file("word/document.xml")?.async("string");
+    const docContent = documentXml ?? "";
+
+    expect(docContent).toContain("<m:f>");
+    expect(docContent).toContain("<m:rad>");
+    expect(docContent).toContain("<m:nary>");
+    expect(docContent).toContain('<m:chr m:val="∑"/>');
   });
 });
