@@ -379,6 +379,38 @@ describe("docx-builder", () => {
     expect(docContent).toContain('<m:oMath>');
   });
 
+  it("should keep numbered prose with inline math as normal paragraphs", async () => {
+    const structured: StructuredDoc = {
+      mode: "official",
+      title: "行内公式条目测试",
+      blocks: [
+        {
+          type: "paragraph",
+          level: 0,
+          text: "1. **模型形式 (f_\\theta) 不同**",
+        },
+        {
+          type: "paragraph",
+          level: 0,
+          text: "3. **正则项 (\\Omega) 不同**",
+        },
+      ],
+      stats: { paragraphCount: 2, headingCount: 0, referenceCount: 0 },
+    };
+
+    const bytes = await buildDocx(structured);
+    const zip = await JSZip.loadAsync(bytes);
+    const documentXml = await zip.file("word/document.xml")?.async("string");
+    const docContent = documentXml ?? "";
+
+    expect(docContent).toContain("模型形式");
+    expect(docContent).toContain("正则项");
+    expect(docContent).toContain("<m:t>θ</m:t>");
+    expect(docContent).toContain("<m:t>Ω</m:t>");
+    expect(docContent).not.toContain("(1)");
+    expect(docContent).not.toContain("<w:tbl>");
+  });
+
   it("should render figure and table captions without bold", async () => {
     const structured: StructuredDoc = {
       mode: "official",

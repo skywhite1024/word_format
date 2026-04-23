@@ -15,6 +15,8 @@ const REQUEST_HEADERS = {
   Accept: "text/html,application/xhtml+xml,application/json,text/plain;q=0.9,*/*;q=0.8",
 };
 
+const GEMINI_RPC_ID = "ujx1Bf";
+
 function decodeJsonStringToken(raw: string): string {
   try {
     return JSON.parse(`"${raw}"`) as string;
@@ -38,19 +40,52 @@ function decodeHtmlEntities(text: string): string {
     .replace(/&gt;/gi, ">");
 }
 
+function normalizeImportedMathDelimiters(text: string): string {
+  return text
+    .replace(/\\\\(?=[()[\]A-Za-z])/g, "\\")
+    .replace(/\\\(([\s\S]*?)\\\)/g, (_match, inner: string) => `(${inner.trim()})`)
+    .replace(/\\\[\s*([\s\S]*?)\s*\\\]/g, (_match, inner: string) => `[\n${inner.trim()}\n]`);
+}
+
+function expandLiteralLineBreaks(text: string): string {
+  return text.replace(/\\r\\n/g, "\n").replace(/\\n/g, "\n").replace(/\\r/g, "\n");
+}
+
+function protectLatexCommands(text: string): { text: string; restore: (value: string) => string } {
+  const preserved: string[] = [];
+  const protectedText = text.replace(/\\(?!u[0-9a-fA-F]{4})(?![nrt]\b)([A-Za-z]+)/g, (match) => {
+    const index = preserved.push(match) - 1;
+    return `__LATEX_CMD_${index}__`;
+  });
+
+  return {
+    text: protectedText,
+    restore: (value: string) => value.replace(/__LATEX_CMD_(\d+)__/g, (_match, index: string) => preserved[Number(index)] ?? ""),
+  };
+}
+
 function normalizeImportText(title: string, sections: string[]): string {
   const uniqueSections: string[] = [];
   const seen = new Set<string>();
 
   for (const section of sections) {
-    const trimmed = deepRepairText(section);
+    const normalized = normalizeImportedMathDelimiters(section);
+    const { text: protectedText, restore } = protectLatexCommands(normalized);
+    const escapedWhitespaceNormalized = protectedText
+      .replace(/(?:\\\\)+r(?:\\\\)+n/g, "\n")
+      .replace(/(?:\\\\)+n/g, "\n")
+      .replace(/(?:\\\\)+r/g, "\n")
+      .replace(/\\r\\n/g, "\n")
+      .replace(/\\n/g, "\n")
+      .replace(/\\r/g, "\n");
+    const trimmed = restore(deepRepairText(escapedWhitespaceNormalized));
     if (!trimmed) continue;
     if (seen.has(trimmed)) continue;
     seen.add(trimmed);
     uniqueSections.push(trimmed);
   }
 
-  const body = uniqueSections.join("\n\n");
+  const body = expandLiteralLineBreaks(uniqueSections.join("\n\n"));
   if (!title) {
     return body;
   }
@@ -72,6 +107,38 @@ function parseReaderMarkdown(readerOutput: string): string {
 function extractReaderTitle(readerOutput: string): string {
   const match = readerOutput.match(/^Title:\s*(.+)$/m);
   return match?.[1]?.trim() ?? "";
+}
+
+function htmlToVisibleLines(html: string): string[] {
+  return decodeHtmlEntities(
+    html
+      .replace(/<script[\s\S]*?<\/script>/gi, " ")
+      .replace(/<style[\s\S]*?<\/style>/gi, " ")
+      .replace(/<[^>]+>/g, "\n"),
+  )
+    .replace(/\u200B/g, "")
+    .replace(/\r\n/g, "\n")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+function extractChatGptPromptFromHtml(html: string): string {
+  const lines = htmlToVisibleLines(html);
+  const promptIndex = lines.findIndex((line) => /^(你说[:：]?|You said:?)/i.test(line));
+  if (promptIndex < 0) return "";
+
+  const inlinePrompt = lines[promptIndex].replace(/^(你说[:：]?|You said:?)/i, "").trim();
+  if (inlinePrompt) {
+    return inlinePrompt;
+  }
+
+  const answerIndex = lines.findIndex((line, index) => index > promptIndex && /^(ChatGPT\s*说[:：]?|ChatGPT:?)/i.test(line));
+  const promptLines = lines
+    .slice(promptIndex + 1, answerIndex > promptIndex ? answerIndex : promptIndex + 4)
+    .filter((line) => !/^Thought for \d+s$/i.test(line));
+
+  return promptLines.join("\n").trim();
 }
 
 function cleanChatGptReaderMarkdown(
@@ -133,6 +200,22 @@ function cleanChatGptReaderMarkdown(
   };
 }
 
+function isLikelyInvalidShareBody(text: string): boolean {
+  const trimmed = text.trim();
+  if (!trimmed) return true;
+  if (trimmed.length < 24) return true;
+
+  const compact = trimmed.replace(/\s+/g, " ");
+  if (
+    /(?:^|\s)(Sign in|Gemini|About Gemini|Subscriptions|For Business)(?:\s|$)/i.test(compact) &&
+    !/[。！？.!?]/.test(compact)
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
 function cleanGeminiReaderMarkdown(markdown: string, shareUrl: string): { title: string; text: string } {
   const lines = markdown
     .replace(/\r\n/g, "\n")
@@ -165,22 +248,12 @@ function cleanGeminiReaderMarkdown(markdown: string, shareUrl: string): { title:
 
   return {
     title,
-    text: deepRepairText(bodyLines.join("\n").trim()),
+    text: normalizeImportText(title, [bodyLines.join("\n").trim()]),
   };
 }
 
 function parseGeminiHtmlFallback(html: string, shareUrl: string): { title: string; text: string } {
-  const withoutScripts = html
-    .replace(/<script[\s\S]*?<\/script>/gi, " ")
-    .replace(/<style[\s\S]*?<\/style>/gi, " ")
-    .replace(/<[^>]+>/g, "\n");
-  const text = decodeHtmlEntities(withoutScripts)
-    .replace(/\u200B/g, "")
-    .replace(/\n{3,}/g, "\n\n");
-  const lines = text
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean);
+  const lines = htmlToVisibleLines(html);
   const startIndex = lines.findIndex((line) => line === shareUrl || line.includes("/share/"));
   const bodyLines = (startIndex >= 0 ? lines.slice(startIndex + 1) : lines).filter((line) => {
     if (/^(登录|Sign in|Gemini|About Gemini|Subscriptions|For Business)$/i.test(line)) return false;
@@ -189,11 +262,17 @@ function parseGeminiHtmlFallback(html: string, shareUrl: string): { title: strin
   const title = bodyLines[0] ?? "Gemini 分享内容";
   return {
     title,
-    text: deepRepairText(bodyLines.join("\n")),
+    text: normalizeImportText(title, [bodyLines.join("\n")]),
   };
 }
 
 function extractChatGptTitle(html: string): string {
+  const pageTitleMatch = html.match(/<title>([^<]+)<\/title>/i);
+  const pageTitle = pageTitleMatch?.[1]?.trim() ?? "";
+  if (pageTitle && !/^ChatGPT$/i.test(pageTitle)) {
+    return pageTitle.replace(/^ChatGPT\s*-\s*/i, "").trim();
+  }
+
   const escapedMatch = html.match(/\\"pageTitle\\",\\"((?:\\\\.|[^"\\])*)\\"/);
   if (escapedMatch?.[1]) {
     return decodeJsonStringToken(escapedMatch[1]).trim();
@@ -225,6 +304,164 @@ function extractChatGptMessageParts(html: string): string[] {
   return results;
 }
 
+function extractGeminiBuildLabel(html: string): string {
+  return html.match(/boq_assistant-bard-web-server_[^"'&\s<]+/)?.[0] ?? "";
+}
+
+function parseGeminiRpcLines(responseText: string): unknown[] {
+  return responseText
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.startsWith("[["))
+    .flatMap((line) => {
+      try {
+        const parsed = JSON.parse(line) as unknown;
+        return Array.isArray(parsed) ? parsed : [];
+      } catch {
+        return [];
+      }
+    });
+}
+
+function walkUnknownTree(node: unknown, visit: (value: unknown) => boolean | void): boolean {
+  if (visit(node) === true) {
+    return true;
+  }
+
+  if (Array.isArray(node)) {
+    for (const item of node) {
+      if (walkUnknownTree(item, visit)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  if (node && typeof node === "object") {
+    for (const value of Object.values(node)) {
+      if (walkUnknownTree(value, visit)) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
+function findGeminiPrompt(node: unknown): string {
+  let prompt = "";
+  walkUnknownTree(node, (value) => {
+    if (
+      Array.isArray(value) &&
+      Array.isArray(value[0]) &&
+      value[0].length === 1 &&
+      typeof value[0][0] === "string" &&
+      value[0][0].trim() &&
+      value[1] === 2
+    ) {
+      prompt = value[0][0].trim();
+      return true;
+    }
+    return false;
+  });
+  return prompt;
+}
+
+function findGeminiShareTitle(node: unknown): string {
+  let title = "";
+  walkUnknownTree(node, (value) => {
+    if (
+      Array.isArray(value) &&
+      value[0] === true &&
+      typeof value[1] === "string" &&
+      value[1].trim() &&
+      !/^https?:\/\//i.test(value[1])
+    ) {
+      title = value[1].trim();
+      return true;
+    }
+    return false;
+  });
+  return title;
+}
+
+function findGeminiMarkdownAnswer(node: unknown): string {
+  let best = "";
+  walkUnknownTree(node, (value) => {
+    if (typeof value !== "string") return false;
+    const trimmed = value.trim();
+    if (!trimmed) return false;
+    if (trimmed.length <= best.length) return false;
+    if (/^https?:\/\//i.test(trimmed)) return false;
+    if (/^[cr]_[a-f0-9]{8,}$/i.test(trimmed)) return false;
+    if (!/[\n$\\#*|]|^1\.\s/m.test(trimmed) && trimmed.length < 300) return false;
+    best = trimmed;
+    return false;
+  });
+  return best;
+}
+
+function parseGeminiRpcConversation(responseText: string): { title: string; prompt: string; answer: string } {
+  let title = "";
+  let prompt = "";
+  let answer = "";
+
+  for (const entry of parseGeminiRpcLines(responseText)) {
+    if (!Array.isArray(entry) || entry[1] !== GEMINI_RPC_ID || typeof entry[2] !== "string") {
+      continue;
+    }
+
+    try {
+      const payload = JSON.parse(entry[2]) as unknown;
+      title ||= findGeminiShareTitle(payload);
+      prompt ||= findGeminiPrompt(payload);
+
+      const candidate = findGeminiMarkdownAnswer(payload);
+      if (candidate.length > answer.length) {
+        answer = candidate;
+      }
+    } catch {
+      continue;
+    }
+  }
+
+  return { title, prompt, answer };
+}
+
+function createGeminiRpcBody(shareId: string): string {
+  return `f.req=${encodeURIComponent(JSON.stringify([[[GEMINI_RPC_ID, JSON.stringify([null, shareId, [4]]), null, "generic"]]]))}&`;
+}
+
+async function fetchGeminiRpcMarkdown(url: URL, html: string): Promise<{ title: string; text: string } | null> {
+  const shareId = url.pathname.split("/").filter(Boolean).at(-1) ?? "";
+  const buildLabel = extractGeminiBuildLabel(html);
+  if (!shareId || !buildLabel) return null;
+
+  const rpcUrl =
+    `https://gemini.google.com/_/BardChatUi/data/batchexecute?rpcids=${GEMINI_RPC_ID}` +
+    `&source-path=${encodeURIComponent(url.pathname)}` +
+    `&bl=${encodeURIComponent(buildLabel)}` +
+    `&hl=zh-CN&_reqid=${Date.now() % 1000000}&rt=c`;
+  const responseText = await fetchText(rpcUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
+      "X-Same-Domain": "1",
+      Referer: "https://gemini.google.com/",
+    },
+    body: createGeminiRpcBody(shareId),
+  });
+
+  const parsed = parseGeminiRpcConversation(responseText);
+  if (!parsed.answer) return null;
+
+  const sections = parsed.prompt ? [`## 你说\n${parsed.prompt}`, `## Gemini\n${parsed.answer}`] : [`## Gemini\n${parsed.answer}`];
+  return {
+    title: parsed.title,
+    text: normalizeImportText(parsed.title, sections),
+  };
+}
+
 function normalizeShareUrl(rawUrl: string): URL {
   let target: URL;
   try {
@@ -250,8 +487,14 @@ function detectShareSource(url: URL): ShareSource {
   throw new Error("当前仅支持 ChatGPT 与 Gemini 的公开分享链接。");
 }
 
-async function fetchText(url: string): Promise<string> {
-  const response = await fetch(url, { headers: REQUEST_HEADERS });
+async function fetchText(url: string, init: RequestInit = {}): Promise<string> {
+  const response = await fetch(url, {
+    ...init,
+    headers: {
+      ...REQUEST_HEADERS,
+      ...((init.headers as Record<string, string> | undefined) ?? {}),
+    },
+  });
   if (!response.ok) {
     throw new Error(`抓取分享页失败(${response.status})。`);
   }
@@ -259,11 +502,27 @@ async function fetchText(url: string): Promise<string> {
 }
 
 async function importGeminiShare(url: URL): Promise<ImportedShareDocument> {
+  let html = "";
+  try {
+    html = await fetchText(url.href);
+    const rpcParsed = await fetchGeminiRpcMarkdown(url, html);
+    if (rpcParsed?.text) {
+      return {
+        source: "gemini",
+        title: rpcParsed.title,
+        text: rpcParsed.text,
+        url: url.href,
+      };
+    }
+  } catch {
+    // Gemini 公开分享页的主站抓取在不同网络环境下表现不稳定，继续尝试阅读代理。
+  }
+
   try {
     const readerOutput = await fetchText(`https://r.jina.ai/http://${url.href}`);
     const markdown = parseReaderMarkdown(readerOutput);
     const parsed = cleanGeminiReaderMarkdown(markdown, url.href);
-    if (parsed.text) {
+    if (parsed.text && !isLikelyInvalidShareBody(parsed.text)) {
       return {
         source: "gemini",
         title: parsed.title,
@@ -275,9 +534,11 @@ async function importGeminiShare(url: URL): Promise<ImportedShareDocument> {
     // Gemini 公开分享页有时会触发代理抓取失败，继续使用 HTML 回退。
   }
 
-  const html = await fetchText(url.href);
+  if (!html) {
+    html = await fetchText(url.href);
+  }
   const parsed = parseGeminiHtmlFallback(html, url.href);
-  if (!parsed.text) {
+  if (!parsed.text || isLikelyInvalidShareBody(parsed.text)) {
     throw new Error("Gemini 分享页内容解析失败。");
   }
 
@@ -290,6 +551,25 @@ async function importGeminiShare(url: URL): Promise<ImportedShareDocument> {
 }
 
 async function importChatGptShare(url: URL): Promise<ImportedShareDocument> {
+  try {
+    const html = await fetchText(url.href);
+    const title = extractChatGptTitle(html);
+    const parts = extractChatGptMessageParts(html);
+    const prompt = extractChatGptPromptFromHtml(html);
+
+    if (parts.length > 0) {
+      const sections = prompt ? [`## 你说\n${prompt}`, `## ChatGPT\n${parts[0]}`, ...parts.slice(1)] : [`## ChatGPT\n${parts[0]}`, ...parts.slice(1)];
+      return {
+        source: "chatgpt",
+        title,
+        text: normalizeImportText(title, sections),
+        url: url.href,
+      };
+    }
+  } catch {
+    // ChatGPT 分享页直连在部分环境会被挑战页或证书代理影响，失败后继续回退。
+  }
+
   try {
     const readerOutput = await fetchText(`https://r.jina.ai/http://${url.href}`);
     const markdown = parseReaderMarkdown(readerOutput);

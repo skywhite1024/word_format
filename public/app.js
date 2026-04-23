@@ -212,19 +212,32 @@ function isStandaloneInlineMathLine(text) {
 
 function isLikelyEquation(text) {
   const trimmed = text.trim();
+  const isDisplayMath = /^\$\$[\s\S]+\$\$$/.test(trimmed);
   const isBracketBlock = /^\[[\s\S]+]$/.test(trimmed) || /^\\\[[\s\S]+\\\]$/.test(trimmed);
-  if (/^\$\$[\s\S]+\$\$$/.test(trimmed)) {
+  if (isDisplayMath || isBracketBlock) {
     return true;
   }
   if (isStandaloneInlineMathLine(trimmed)) {
     return true;
   }
 
-  const hasMathKeyword = /\\frac|\\sum|\\int|\\sqrt|\\mathbb|\\mathcal|\\hat|\\tilde|∑|∫|√|∞|⊙/.test(trimmed);
+  const hasMathKeyword = /\\frac|\\sum|\\int|\\sqrt|\\mathbb|\\mathcal|\\hat|\\tilde|\\left|\\right|\\begin|\\end|∑|∫|√|∞|⊙/.test(trimmed);
   const hasMathCommand = /\\[A-Za-z]+/.test(trimmed);
-  const hasEquationOperator = /[=+\-×·]/.test(trimmed);
-  const hasMathContext = /[_^]|\\text|\\dot|[A-Za-z]\d|[A-Za-z]_[A-Za-z0-9]/.test(trimmed);
-  return isBracketBlock || hasMathKeyword || hasMathCommand || (hasEquationOperator && hasMathContext);
+  const hasEquationOperator = /[=<>≤≥]/.test(trimmed);
+  const hasScriptContext = /[_^]/.test(trimmed);
+  const hasMathContext = /[A-Za-zα-ωΑ-Ω0-9]/.test(trimmed) && /[+\-*/^=<>≤≥×÷_|[\]()]/.test(trimmed);
+  const hasChineseProse = /[\u4e00-\u9fff]{2,}/.test(trimmed);
+  const hasListLikePrefix = /^\s*(?:\d+[.)]|[（(]\d+[）)]|[-*•])\s+/.test(trimmed);
+
+  if (hasListLikePrefix && hasChineseProse) {
+    return false;
+  }
+
+  if (hasChineseProse) {
+    return hasMathKeyword || (hasEquationOperator && hasMathContext);
+  }
+
+  return hasMathKeyword || hasMathCommand || hasScriptContext || (hasEquationOperator && hasMathContext);
 }
 
 function formatInlineContent(text) {

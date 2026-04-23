@@ -89,32 +89,31 @@ describe("worker api", () => {
 
   it("should import gemini share content from reader markdown", async () => {
     const originalFetch = globalThis.fetch;
+    const readerContent = [
+      "Title: Gemini - direct access to Google AI",
+      "",
+      "URL Source: https://gemini.google.com/share/demo",
+      "",
+      "Markdown Content:",
+      "# **高三三角函数常用值与技巧**",
+      "",
+      "[https://gemini.google.com/share/demo](https://gemini.google.com/share/demo)",
+      "",
+      "Created with Pro Published today",
+      "",
+      "You said",
+      "用表格展示高三三角函数常用值",
+      "",
+      "这是整理后的正文。",
+    ].join("\n");
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockResolvedValue(
-        new Response(
-          [
-            "Title: Gemini - direct access to Google AI",
-            "",
-            "URL Source: https://gemini.google.com/share/demo",
-            "",
-            "Markdown Content:",
-            "# **高三三角函数常用值与技巧**",
-            "",
-            "[https://gemini.google.com/share/demo](https://gemini.google.com/share/demo)",
-            "",
-            "Created with Pro Published today",
-            "",
-            "You said",
-            "用表格展示高三三角函数常用值",
-            "",
-            "这是整理后的正文。",
-          ].join("\n"),
-          {
+      vi.fn().mockImplementation(
+        async () =>
+          new Response(readerContent, {
             status: 200,
             headers: { "Content-Type": "text/plain; charset=utf-8" },
-          },
-        ),
+          }),
       ),
     );
 
@@ -142,36 +141,115 @@ describe("worker api", () => {
     }
   });
 
-  it("should import chatgpt share content from reader markdown", async () => {
+  it("should import gemini share content from share rpc before reader fallback", async () => {
     const originalFetch = globalThis.fetch;
+    const rpcPayload = JSON.stringify([
+      null,
+      [
+        [
+          ["c_demo", "r_demo"],
+          null,
+          [["详细介绍一下机器学习中的各种公式"], 2, null, 0, "demo", 0, null, null, false, null, []],
+          [
+            [
+              [
+                "rc_demo",
+                [
+                  "下面这份可以当作“机器学习公式总览”。\n\n1. **模型形式 \\(f_\\theta\\) 不同**\n2. **损失函数 \\(L\\) 不同**\n\n\\[\n\\hat{y} = w^T x + b\n\\]",
+                ],
+              ],
+            ],
+          ],
+          null,
+          null,
+          null,
+          null,
+          null,
+          true,
+          false,
+          null,
+          [],
+          [true, "机器学习公式详解与应用", null, null, null, ["", "", ""], null, [2, "demo", "思考"], true],
+          "24f5db20a7b8",
+        ],
+      ],
+    ]);
+    const rpcResponse = [")]}'", "512", JSON.stringify([["wrb.fr", "ujx1Bf", rpcPayload, null, null, null, "generic"]])].join("\n");
+
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockResolvedValue(
-        new Response(
-          [
-            "Title: 来看看这段对话",
-            "",
-            "URL Source: https://chatgpt.com/share/demo-id",
-            "",
-            "Markdown Content:",
-            "# ChatGPT - 测试标题",
-            "",
-            "Skip to content",
-            "Chat history",
-            "New chat",
-            "This is a copy of a conversation between ChatGPT & Anonymous.",
-            "Report conversation",
-            "请输出一个摘要",
-            "",
-            "Thought for 31s",
-            "",
-            "这是导入后的正文内容。",
-          ].join("\n"),
-          {
+      vi
+        .fn()
+        .mockResolvedValueOnce(
+          new Response("<html><body>boq_assistant-bard-web-server_test-build-p0</body></html>", {
+            status: 200,
+            headers: { "Content-Type": "text/html; charset=utf-8" },
+          }),
+        )
+        .mockResolvedValueOnce(
+          new Response(rpcResponse, {
             status: 200,
             headers: { "Content-Type": "text/plain; charset=utf-8" },
-          },
+          }),
         ),
+    );
+
+    try {
+      const request = new Request("https://example.com/api/import/share", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          url: "https://gemini.google.com/share/24f5db20a7b8",
+        }),
+      });
+
+      const response = await worker.fetch(request, {
+        ASSETS: { fetch: async () => new Response("not found", { status: 404 }) },
+      } as any);
+
+      expect(response.status).toBe(200);
+      const data = (await response.json()) as { source: string; title: string; text: string };
+      expect(data.source).toBe("gemini");
+      expect(data.title).toBe("机器学习公式详解与应用");
+      expect(data.text).toContain("## 你说");
+      expect(data.text).toContain("## Gemini");
+      expect(data.text).toContain("模型形式");
+      expect(data.text).toContain("\\theta");
+      expect(data.text).toContain("\\hat{y} = w^T x + b");
+    } finally {
+      vi.stubGlobal("fetch", originalFetch);
+    }
+  });
+
+  it("should import chatgpt share content from reader markdown", async () => {
+    const originalFetch = globalThis.fetch;
+    const readerContent = [
+      "Title: 来看看这段对话",
+      "",
+      "URL Source: https://chatgpt.com/share/demo-id",
+      "",
+      "Markdown Content:",
+      "# ChatGPT - 测试标题",
+      "",
+      "Skip to content",
+      "Chat history",
+      "New chat",
+      "This is a copy of a conversation between ChatGPT & Anonymous.",
+      "Report conversation",
+      "请输出一个摘要",
+      "",
+      "Thought for 31s",
+      "",
+      "这是导入后的正文内容。",
+    ].join("\n");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation(
+        async () =>
+          new Response(readerContent, {
+            status: 200,
+            headers: { "Content-Type": "text/plain; charset=utf-8" },
+          }),
       ),
     );
 
@@ -202,12 +280,64 @@ describe("worker api", () => {
     }
   });
 
-  it("should fallback to chatgpt share page html when reader import fails", async () => {
+  it("should prefer chatgpt html payload when it contains richer markdown content", async () => {
+    const originalFetch = globalThis.fetch;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          [
+            "<html><head><title>机器学习公式介绍</title></head><body>",
+            "<h4>你说：</h4><div>详细介绍一下机器学习中的各种公式</div>",
+            "<h4>ChatGPT 说：</h4>",
+            '<script nonce="test">',
+            'window.__reactRouterContext={};window.__reactRouterContext.streamController={enqueue(){}};',
+            'window.__reactRouterContext.streamController.enqueue("[{\\"_1\\":2},\\"pageTitle\\",\\"机器学习公式介绍\\",\\"content_type\\",\\"text\\",\\"parts\\",[1],\\"下面这份可以当作“机器学习公式总览”。\\\\n\\\\n1. **模型形式 \\\\\\\\(f_\\\\theta\\\\\\\\) 不同**\\\\n2. **损失函数 \\\\\\\\(L\\\\\\\\) 不同**\\\\n\\\\n\\\\\\\\[\\\\n\\\\hat{y} = w^T x + b\\\\n\\\\\\\\]\\" ]");',
+            "</script>",
+            "</body></html>",
+          ].join(""),
+          {
+            status: 200,
+            headers: { "Content-Type": "text/html; charset=utf-8" },
+          },
+        ),
+      ),
+    );
+
+    try {
+      const request = new Request("https://example.com/api/import/share", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          url: "https://chatgpt.com/share/demo-id",
+        }),
+      });
+
+      const response = await worker.fetch(request, {
+        ASSETS: { fetch: async () => new Response("not found", { status: 404 }) },
+      } as any);
+
+      expect(response.status).toBe(200);
+      const data = (await response.json()) as { source: string; title: string; text: string };
+      expect(data.source).toBe("chatgpt");
+      expect(data.title).toBe("机器学习公式介绍");
+      expect(data.text).toContain("## 你说");
+      expect(data.text).toContain("## ChatGPT");
+      expect(data.text).toContain("模型形式");
+      expect(data.text).toContain("\\theta");
+      expect(data.text).toContain("\\hat{y} = w^T x + b");
+    } finally {
+      vi.stubGlobal("fetch", originalFetch);
+    }
+  });
+
+  it("should fallback to chatgpt share page html after html and reader attempts fail", async () => {
     const originalFetch = globalThis.fetch;
     vi.stubGlobal(
       "fetch",
       vi
         .fn()
+        .mockRejectedValueOnce(new Error("html unavailable"))
         .mockRejectedValueOnce(new Error("reader unavailable"))
         .mockResolvedValueOnce(
           new Response(

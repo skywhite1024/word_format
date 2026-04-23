@@ -1200,18 +1200,32 @@ function buildDocxTable(rows: string[][]): Table {
 
 function isLikelyEquation(raw: string): boolean {
   const trimmed = raw.trim();
+  const isDisplayMath = /^\$\$[\s\S]+\$\$$/.test(trimmed);
   const isBracketBlock = /^\[[\s\S]+]$/.test(trimmed) || /^\\\[[\s\S]+\\\]$/.test(trimmed);
+  if (isDisplayMath || isBracketBlock) return true;
+
   const text = extractEquationText(raw);
   if (!text) return false;
-  if (!isBracketBlock && text.length > 180) return false;
-  if (!isBracketBlock && /[。！？；：]/.test(text)) return false;
+  if (text.length > 180) return false;
+  if (/[。！？；：]/.test(text)) return false;
 
-  const hasMathKeyword = /\\frac|\\sum|\\int|\\sqrt|\\mathbb|\\mathcal|\\hat|\\tilde|∑|∫|√|∞|⊙/.test(raw);
+  const hasMathKeyword = /\\frac|\\sum|\\int|\\sqrt|\\mathbb|\\mathcal|\\hat|\\tilde|\\left|\\right|\\begin|\\end|∑|∫|√|∞|⊙/.test(raw);
   const hasMathCommand = /\\[A-Za-z]+/.test(raw);
   const hasEquationOperator = /[=<>≤≥]/.test(text);
   const hasScriptContext = /[_^]/.test(text);
   const hasMathContext = /[A-Za-zα-ωΑ-Ω0-9]/.test(text) && /[+\-*/^=<>≤≥×÷_|[\]()]/.test(text);
-  return isBracketBlock || hasMathKeyword || hasMathCommand || hasScriptContext || (hasEquationOperator && hasMathContext);
+  const hasChineseProse = /[\u4e00-\u9fff]{2,}/.test(text);
+  const hasListLikePrefix = /^\s*(?:\d+[.)]|[（(]\d+[）)]|[-*•])\s+/.test(trimmed);
+
+  if (hasListLikePrefix && hasChineseProse) {
+    return false;
+  }
+
+  if (hasChineseProse) {
+    return hasMathKeyword || (hasEquationOperator && hasMathContext);
+  }
+
+  return hasMathKeyword || hasMathCommand || hasScriptContext || (hasEquationOperator && hasMathContext);
 }
 
 function isStandaloneInlineMathLine(text: string): boolean {
