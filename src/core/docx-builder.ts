@@ -22,6 +22,7 @@
   PageNumber,
   type ParagraphChild,
   Paragraph,
+  SimpleField,
   Table,
   TableCell,
   TableOfContents,
@@ -48,6 +49,7 @@ const SCRIPT_CLOSE = "__SCRIPT_CLOSE__";
 const CHAR_SUM = "\u2211";
 const CHAR_INTEGRAL = "\u222B";
 const CHAR_SQRT = "\u221A";
+const CHAR_NORM = "\u2016";
 
 interface BuildDocxOptions {
   mathItalic?: boolean;
@@ -397,6 +399,8 @@ function normalizeLatexLikeText(text: string): string {
     .replace(/\\infty/g, "∞")
     .replace(/\\mid/g, "|")
     .replace(/\\odot/g, "⊙")
+    .replace(/\\rightarrow/g, "→")
+    .replace(/\\Rightarrow/g, "⇒")
     .replace(/\\to/g, "→")
     .replace(/\\sim/g, "~")
     .replace(/\\partial/g, "∂")
@@ -414,7 +418,9 @@ function normalizeLatexLikeText(text: string): string {
     .replace(/\\dot\{([^{}]+)\}/g, "$1̇")
     .replace(/\\left/g, "")
     .replace(/\\right/g, "")
-    .replace(/\\\|/g, "|")
+    .replace(/\\Vert/g, CHAR_NORM)
+    .replace(/\\\|/g, CHAR_NORM)
+    .replace(/\|\|/g, CHAR_NORM)
     .replace(/\\cdot/g, "·")
     .replace(/\\times/g, "×")
     .replace(/\\leq/g, "≤")
@@ -447,7 +453,7 @@ function isMathBaseStart(ch: string): boolean {
 }
 
 function isScriptBaseSymbol(ch: string): boolean {
-  return /[)\]\}|]/.test(ch);
+  return /[)\]\}|‖]/.test(ch);
 }
 
 function isMathBaseChar(ch: string): boolean {
@@ -455,7 +461,7 @@ function isMathBaseChar(ch: string): boolean {
 }
 
 function isScriptTerminator(ch: string): boolean {
-  return /[\s+\-*/<>≤≥×÷|(),;:]/.test(ch);
+  return /[\s+\-*/<>≤≥×÷|‖(),;:]/.test(ch);
 }
 
 function readScriptValue(text: string, start: number): { value: string; end: number } {
@@ -678,8 +684,11 @@ function readNaryOperand(expression: string, start: number): { value: string; en
   };
 }
 
-function createScriptMathComponent(base: string, subScript?: string, superScript?: string): MathComponent {
-  const baseChildren: MathComponent[] = [new MathRun(base)];
+function createScriptMathComponentFromChildren(
+  baseChildren: MathComponent[],
+  subScript?: string,
+  superScript?: string,
+): MathComponent {
   const subChildren: MathComponent[] = subScript ? buildMathComponentsFromExpression(subScript) : [];
   const superChildren: MathComponent[] = superScript ? buildMathComponentsFromExpression(superScript) : [];
 
@@ -702,7 +711,99 @@ function createScriptMathComponent(base: string, subScript?: string, superScript
       superScript: superChildren,
     });
   }
-  return new MathRun(base);
+  return baseChildren.length === 1 ? baseChildren[0] : new MathRun("");
+}
+
+function createScriptMathComponent(base: string, subScript?: string, superScript?: string): MathComponent {
+  return createScriptMathComponentFromChildren([new MathRun(base)], subScript, superScript);
+}
+
+function readMathScripts(
+  expression: string,
+  start: number,
+): { subScript?: string; superScript?: string; end: number } {
+  let subScript: string | undefined;
+  let superScript: string | undefined;
+  let cursor = start;
+
+  while (cursor < expression.length && (expression[cursor] === "_" || expression[cursor] === "^")) {
+    const marker = expression[cursor];
+    const script = readScriptValue(expression, cursor + 1);
+    if (!script.value) {
+      break;
+    }
+    if (marker === "_") {
+      subScript = subScript ? `${subScript}_${script.value}` : script.value;
+    } else {
+      superScript = superScript ? `${superScript}^${script.value}` : script.value;
+    }
+    cursor = script.end;
+  }
+
+  return { subScript, superScript, end: cursor };
+}
+
+function readDelimitedFenceGroup(
+  expression: string,
+  start: number,
+  delimiter: string,
+): { children: MathComponent[]; end: number } | null {
+  if (expression[start] !== delimiter) {
+    return null;
+  }
+
+  let roundDepth = 0;
+  let squareDepth = 0;
+  let braceDepth = 0;
+
+  for (let cursor = start + 1; cursor < expression.length; cursor += 1) {
+    const ch = expression[cursor];
+    if (ch === "(") {
+      roundDepth += 1;
+      continue;
+    }
+    if (ch === ")") {
+      if (roundDepth > 0) {
+        roundDepth -= 1;
+      }
+      continue;
+    }
+    if (ch === "[") {
+      squareDepth += 1;
+      continue;
+    }
+    if (ch === "]") {
+      if (squareDepth > 0) {
+        squareDepth -= 1;
+      }
+      continue;
+    }
+    if (ch === "{") {
+      braceDepth += 1;
+      continue;
+    }
+    if (ch === "}") {
+      if (braceDepth > 0) {
+        braceDepth -= 1;
+      }
+      continue;
+    }
+
+    if (ch === delimiter && roundDepth === 0 && squareDepth === 0 && braceDepth === 0) {
+      const inner = expression.slice(start + 1, cursor).trim();
+      const children: MathComponent[] = [new MathRun(delimiter)];
+      if (inner) {
+        children.push(...buildMathComponentsFromExpression(inner));
+      }
+      children.push(new MathRun(delimiter));
+      return {
+        children,
+        end: cursor + 1,
+      };
+    }
+  }
+
+  return null;
 }
 
 function buildMathComponentsFromExpression(expression: string): MathComponent[] {
@@ -724,6 +825,34 @@ function buildMathComponentsFromExpression(expression: string): MathComponent[] 
       continue;
     }
 
+    const normGroup = readDelimitedFenceGroup(expression, cursor, CHAR_NORM);
+    if (normGroup) {
+      const scripts = readMathScripts(expression, normGroup.end);
+      if (scripts.subScript || scripts.superScript) {
+        components.push(
+          createScriptMathComponentFromChildren(normGroup.children, scripts.subScript, scripts.superScript),
+        );
+      } else {
+        components.push(...normGroup.children);
+      }
+      cursor = scripts.end;
+      continue;
+    }
+
+    const absoluteGroup = readDelimitedFenceGroup(expression, cursor, "|");
+    if (absoluteGroup) {
+      const scripts = readMathScripts(expression, absoluteGroup.end);
+      if (scripts.subScript || scripts.superScript) {
+        components.push(
+          createScriptMathComponentFromChildren(absoluteGroup.children, scripts.subScript, scripts.superScript),
+        );
+      } else {
+        components.push(...absoluteGroup.children);
+      }
+      cursor = scripts.end;
+      continue;
+    }
+
     const ch = expression[cursor];
     const canBeBase = isMathBaseStart(ch) || isScriptBaseSymbol(ch);
     if (!canBeBase) {
@@ -740,25 +869,7 @@ function buildMathComponentsFromExpression(expression: string): MathComponent[] 
     }
 
     const base = expression.slice(cursor, end);
-    let subScript: string | undefined;
-    let superScript: string | undefined;
-    let tokenCursor = end;
-
-    while (tokenCursor < expression.length && (expression[tokenCursor] === "_" || expression[tokenCursor] === "^")) {
-      const marker = expression[tokenCursor];
-      const script = readScriptValue(expression, tokenCursor + 1);
-      if (!script.value) {
-        break;
-      }
-      if (marker === "_") {
-        subScript = subScript ? `${subScript}_${script.value}` : script.value;
-      } else if (marker === "^") {
-        superScript = superScript ? `${superScript}^${script.value}` : script.value;
-      } else {
-        break;
-      }
-      tokenCursor = script.end;
-    }
+    const { subScript, superScript, end: tokenCursor } = readMathScripts(expression, end);
 
     if (base === CHAR_SUM || base === CHAR_INTEGRAL) {
       const operand = readNaryOperand(expression, tokenCursor);
@@ -1257,23 +1368,10 @@ function centeredInlineMathParagraph(rawText: string): Paragraph {
   });
 }
 
-function normalizeEquationKey(text: string): string {
-  return text.replace(/\s+/g, "").trim();
-}
-
-function equationParagraph(
-  raw: string,
-  equationIndexByKey: Map<string, number>,
-  state: { current: number },
-): Table {
+function equationParagraph(raw: string, state: { current: number }): Table {
   const equationText = normalizeLatexLikeText(extractEquationText(raw));
-  const key = normalizeEquationKey(equationText);
-  const existing = equationIndexByKey.get(key);
-  const equationNumber = existing ?? state.current + 1;
-  if (existing === undefined) {
-    state.current = equationNumber;
-    equationIndexByKey.set(key, equationNumber);
-  }
+  state.current += 1;
+  const equationNumber = state.current;
 
   return new Table({
     width: {
@@ -1337,7 +1435,11 @@ function equationParagraph(
                 alignment: AlignmentType.RIGHT,
                 indent: { firstLine: 0 },
                 spacing: { before: 120, after: 120, line: 360, lineRule: LineRuleType.AUTO },
-                children: [textRun(`(${equationNumber})`, FONT_CN_SONG, 21)],
+                children: [
+                  textRun("(", FONT_CN_SONG, 21),
+                  new SimpleField("SEQ Equation \\* ARABIC", String(equationNumber)),
+                  textRun(")", FONT_CN_SONG, 21),
+                ],
               }),
             ],
           }),
@@ -1376,7 +1478,6 @@ function figureCaptionParagraph(index: number, title: string): Paragraph {
 function buildBody(structured: StructuredDoc): FileChild[] {
   const paragraphs: FileChild[] = [];
   const referenceAnchorMap = buildReferenceAnchorMap(structured.blocks);
-  const equationIndexByKey = new Map<string, number>();
   const equationState = { current: 0 };
   let tableIndex = 0;
   let figureIndex = 0;
@@ -1445,7 +1546,7 @@ function buildBody(structured: StructuredDoc): FileChild[] {
     }
 
     if (isLikelyEquation(block.text)) {
-      paragraphs.push(equationParagraph(block.text, equationIndexByKey, equationState));
+      paragraphs.push(equationParagraph(block.text, equationState));
       continue;
     }
 
@@ -1494,6 +1595,9 @@ async function normalizeDocumentXml(rawBytes: Uint8Array, options: BuildDocxOpti
 
 export async function buildDocx(structured: StructuredDoc, options: BuildDocxOptions = {}): Promise<Uint8Array> {
   const doc = new Document({
+    features: {
+      updateFields: true,
+    },
     numbering: {
       config: [
         {

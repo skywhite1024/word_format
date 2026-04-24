@@ -56,15 +56,17 @@ describe("docx-builder", () => {
     const bytes = await buildDocx(structured);
     const zip = await JSZip.loadAsync(bytes);
     const documentXml = await zip.file("word/document.xml")?.async("string");
+    const settingsXml = await zip.file("word/settings.xml")?.async("string");
     const docContent = documentXml ?? "";
+    const settingsContent = settingsXml ?? "";
 
     expect(docContent).toContain("<m:oMath>");
     expect(docContent).toContain("<m:sSub>");
     expect(docContent).toContain("<m:t>R</m:t>");
     expect(docContent).toContain("<m:t>total</m:t>");
     expect(docContent).not.toContain("\\text{");
-    expect(docContent).toContain("(1)");
-    expect(docContent).not.toContain("(2)");
+    expect(docContent.match(/SEQ Equation/g)?.length ?? 0).toBe(2);
+    expect(settingsContent).toContain("w:updateFields");
     expect(docContent).toContain("第 1 章　绪论");
     expect(docContent).toContain("表1 算法参数对照表");
     expect(docContent).toContain("图1 系统总体架构图");
@@ -257,7 +259,7 @@ describe("docx-builder", () => {
     expect(docContent).toContain("<m:sSup>");
     expect(docContent).toContain("<m:sSubSup>");
     expect(docContent).toContain("<m:t>2</m:t>");
-    expect(docContent).toContain("<m:t>|</m:t>");
+    expect(docContent).toContain("<m:t>‖</m:t>");
   });
 
   it("should keep bracketed multiline equations as one numbered equation", async () => {
@@ -286,8 +288,7 @@ describe("docx-builder", () => {
     const documentXml = await zip.file("word/document.xml")?.async("string");
     const docContent = documentXml ?? "";
 
-    expect(docContent).toContain("(1)");
-    expect(docContent).not.toContain("(2)");
+    expect(docContent.match(/SEQ Equation/g)?.length ?? 0).toBe(1);
     expect(docContent).toContain("<m:f>");
     expect(docContent).toContain("<m:t>=</m:t>");
     expect(docContent).toContain("<m:t>Explained</m:t>");
@@ -320,7 +321,7 @@ describe("docx-builder", () => {
     const docContent = documentXml ?? "";
 
     expect(docContent).not.toContain("<w:tbl>");
-    expect(docContent).not.toContain("(1)");
+    expect(docContent).not.toContain("SEQ Equation");
     expect(docContent).toContain("<m:sSub>");
     expect(docContent).toContain("Model");
     expect(docContent).toContain("Regularizer");
@@ -473,8 +474,65 @@ describe("docx-builder", () => {
     expect(docContent).toContain("正则项");
     expect(docContent).toContain("<m:t>θ</m:t>");
     expect(docContent).toContain("<m:t>Ω</m:t>");
-    expect(docContent).not.toContain("(1)");
+    expect(docContent).not.toContain("SEQ Equation");
     expect(docContent).not.toContain("<w:tbl>");
+  });
+
+  it("should keep norm superscript attached to the whole norm group", async () => {
+    const structured: StructuredDoc = {
+      mode: "official",
+      title: "范数公式测试",
+      blocks: [
+        {
+          type: "paragraph",
+          level: 0,
+          text: "[\n\\min_{w,b}\\; \\frac{1}{2}\\|w\\|^2\n]",
+        },
+      ],
+      stats: { paragraphCount: 1, headingCount: 0, referenceCount: 0 },
+    };
+
+    const bytes = await buildDocx(structured);
+    const zip = await JSZip.loadAsync(bytes);
+    const documentXml = await zip.file("word/document.xml")?.async("string");
+    const docContent = documentXml ?? "";
+
+    expect(docContent).toContain("<m:f>");
+    expect(docContent).toContain("<m:sSub>");
+    expect(docContent).toContain("<m:sSup>");
+    expect(docContent).toContain("<m:t>‖</m:t>");
+    expect(docContent).not.toContain("<m:t>|</m:t>");
+  });
+
+  it("should normalize right arrow blocks into math arrows instead of literal command text", async () => {
+    const structured: StructuredDoc = {
+      mode: "official",
+      title: "箭头公式测试",
+      blocks: [
+        {
+          type: "paragraph",
+          level: 0,
+          text: [
+            "[",
+            "\\text{数据} \\rightarrow \\text{模型} \\rightarrow \\text{损失} \\rightarrow \\text{梯度} \\rightarrow \\text{更新} \\rightarrow \\text{评估}",
+            "]",
+          ].join("\n"),
+        },
+      ],
+      stats: { paragraphCount: 1, headingCount: 0, referenceCount: 0 },
+    };
+
+    const bytes = await buildDocx(structured);
+    const zip = await JSZip.loadAsync(bytes);
+    const documentXml = await zip.file("word/document.xml")?.async("string");
+    const docContent = documentXml ?? "";
+
+    expect(docContent).toContain("<m:t>→</m:t>");
+    expect(docContent).not.toContain("rightarrow");
+    expect(docContent).toContain("<m:t>数</m:t>");
+    expect(docContent).toContain("<m:t>据</m:t>");
+    expect(docContent).toContain("<m:t>评</m:t>");
+    expect(docContent).toContain("<m:t>估</m:t>");
   });
 
   it("should render figure and table captions without bold", async () => {
@@ -543,9 +601,7 @@ describe("docx-builder", () => {
     expect(docContent).toContain("<m:t>∞</m:t>");
     expect(docContent).toContain("<m:t>q</m:t>");
     expect(docContent).toContain("<m:t>KL</m:t>");
-    expect(docContent).toContain("(1)");
-    expect(docContent).toContain("(2)");
-    expect(docContent).toContain("(3)");
+    expect(docContent.match(/SEQ Equation/g)?.length ?? 0).toBe(3);
   });
 
   it("should emit native fraction radical and n-ary nodes for advanced formulas", async () => {

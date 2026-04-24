@@ -416,6 +416,55 @@ describe("worker api", () => {
     }
   });
 
+  it("should strip serialized chatgpt stream artifacts from imported html content", async () => {
+    const originalFetch = globalThis.fetch;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          [
+            "<html><head><title>机器学习公式介绍</title></head><body>",
+            "<h4>你说：</h4><div>详细介绍一下机器学习中的各种公式</div>",
+            "<h4>ChatGPT 说：</h4>",
+            '<script nonce="test">',
+            'window.__reactRouterContext={};window.__reactRouterContext.streamController={enqueue(){}};',
+            'window.__reactRouterContext.streamController.enqueue("[{\\"_1\\":2},\\"pageTitle\\",\\"机器学习公式介绍\\",\\"content_type\\",\\"text\\",\\"parts\\",[1],\\"我会按先搭框架再讲公式的方式来讲。\\\\n\\\\n其中目标函数是 \\\\\\\\|w\\\\\\\\|^2。\\",\\"role\\",\\"assistant\\",,\\"_95\\":99,\\"traceId\\",\\"16803574083938886017\\" ]");',
+            "</script>",
+            "</body></html>",
+          ].join(""),
+          {
+            status: 200,
+            headers: { "Content-Type": "text/html; charset=utf-8" },
+          },
+        ),
+      ),
+    );
+
+    try {
+      const request = new Request("https://example.com/api/import/share", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          url: "https://chatgpt.com/share/demo-id",
+        }),
+      });
+
+      const response = await worker.fetch(request, {
+        ASSETS: { fetch: async () => new Response("not found", { status: 404 }) },
+      } as any);
+
+      expect(response.status).toBe(200);
+      const data = (await response.json()) as { source: string; title: string; text: string };
+      expect(data.source).toBe("chatgpt");
+      expect(data.text).toContain("目标函数是 \\\\|w\\\\|^2");
+      expect(data.text).not.toContain('","role","assistant"');
+      expect(data.text).not.toContain("traceId");
+      expect(data.text).not.toContain('"_95":99');
+    } finally {
+      vi.stubGlobal("fetch", originalFetch);
+    }
+  });
+
   it("should import chatgpt share content from codetabs html when direct fetch fails", async () => {
     const originalFetch = globalThis.fetch;
     vi.stubGlobal(

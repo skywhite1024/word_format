@@ -154,7 +154,7 @@ function extractChatGptPromptFromStream(html: string): string {
   const candidates: string[] = [];
   for (const pattern of patterns) {
     for (const match of html.matchAll(pattern)) {
-      const decoded = decodeJsonStringToken(match[1]).trim();
+      const decoded = normalizeChatGptExtractedText(decodeJsonStringToken(match[1]));
       if (!isPlausibleChatGptPromptCandidate(decoded)) continue;
       candidates.push(decoded);
     }
@@ -186,7 +186,68 @@ function extractChatGptPromptFromHtml(html: string): string {
     .slice(promptIndex + 1, answerIndex > promptIndex ? answerIndex : promptIndex + 4)
     .filter((line) => !/^Thought for \d+s$/i.test(line));
 
-  return promptLines.join("\n").trim();
+  return normalizeChatGptExtractedText(promptLines.join("\n"));
+}
+
+function stripChatGptSerializedTail(text: string): string {
+  let output = expandLiteralLineBreaks(text).replace(/\r\n/g, "\n").replace(/\u0000/g, "");
+  let cutIndex = output.length;
+
+  const markerStrings = [
+    '","role","assistant"',
+    '\\"role\\",\\"assistant\\"',
+    '","traceId"',
+    "traceId",
+    "conversation-turn-",
+    'GLOBAL","https://',
+    'GLOBAL","http://',
+  ];
+  for (const marker of markerStrings) {
+    const index = output.indexOf(marker);
+    if (index >= 0) {
+      cutIndex = Math.min(cutIndex, index);
+    }
+  }
+
+  const markerPatterns = [/(?:^|[,\s])"_\d+":\d+/, /\bthoughts\b/i, /"_actions","_actions"/];
+  for (const pattern of markerPatterns) {
+    const index = output.search(pattern);
+    if (index >= 0) {
+      cutIndex = Math.min(cutIndex, index);
+    }
+  }
+
+  if (cutIndex < output.length) {
+    output = output.slice(0, cutIndex);
+  }
+
+  return output
+    .split("\n")
+    .filter((line) => !/^Thought for \d+s$/i.test(line.trim()))
+    .join("\n")
+    .replace(/[,\]}\s"]+$/g, "")
+    .trim();
+}
+
+function isLikelyChatGptArtifactSoup(text: string): boolean {
+  const compact = text.replace(/\s+/g, " ");
+  const artifactSignals = [
+    /"_\d+":\d+/.test(compact),
+    /\btraceId\b/i.test(compact),
+    /\bconversation-turn-[a-f0-9-]+\b/i.test(compact),
+    /"role","assistant"/.test(compact),
+    /\bGLOBAL","https?:\/\//.test(compact),
+    /"_actions","_actions"/.test(compact),
+  ].filter(Boolean).length;
+
+  return artifactSignals >= 2;
+}
+
+function normalizeChatGptExtractedText(text: string): string {
+  const normalized = stripChatGptSerializedTail(text);
+  if (!normalized) return "";
+  if (isLikelyChatGptArtifactSoup(normalized)) return "";
+  return normalized;
 }
 
 function cleanChatGptReaderMarkdown(
@@ -267,7 +328,11 @@ function isLikelyInvalidShareBody(text: string): boolean {
   return false;
 }
 
-function cleanGeminiReaderMarkdown(markdown: string, shareUrl: string): { title: string; text: string } {
+function cleanGeminiReaderMarkdown(
+  markdown: string,
+  shareUrl: string,
+  fallbackTitle = "",
+): { title: string; text: string } {
   const lines = markdown
     .replace(/\r\n/g, "\n")
     .split("\n")
@@ -287,7 +352,13 @@ function cleanGeminiReaderMarkdown(markdown: string, shareUrl: string): { title:
   });
 
   const titleLine = workingLines.find((line) => /^#\s+/.test(line)) ?? "";
-  const title = titleLine.replace(/^#\s+/, "").replace(/\*\*/g, "").trim();
+  const normalizedFallbackTitle = fallbackTitle
+    .replace(/^‎?Gemini\s*-\s*/i, "")
+    .replace(/^‎?Bard\s*-\s*/i, "")
+    .trim();
+  const title =
+    titleLine.replace(/^#\s+/, "").replace(/\*\*/g, "").trim() ||
+    (/^direct access to google ai$/i.test(normalizedFallbackTitle) ? "" : normalizedFallbackTitle);
   const bodyLines = workingLines
     .filter((line, index) => index === 0 || line !== titleLine)
     .map((line) => {
@@ -296,10 +367,15 @@ function cleanGeminiReaderMarkdown(markdown: string, shareUrl: string): { title:
       }
       return line.replace(/\*\*/g, "");
     });
+  const body = bodyLines.join("\n").trim();
+  const sections =
+    /^##\s+/m.test(body) || !body
+      ? [body]
+      : [`## Gemini\n${body}`];
 
   return {
     title,
-    text: normalizeImportText(title, [bodyLines.join("\n").trim()]),
+    text: normalizeImportText(title, sections),
   };
 }
 
@@ -347,11 +423,14 @@ function extractChatGptMessageParts(html: string): string[] {
   ];
 
   const results: string[] = [];
+  const seen = new Set<string>();
   for (const pattern of patterns) {
     for (const match of html.matchAll(pattern)) {
-      const decoded = decodeJsonStringToken(match[1]).trim();
+      const decoded = normalizeChatGptExtractedText(decodeJsonStringToken(match[1]));
       if (!decoded) continue;
       if (decoded.length < 3) continue;
+      if (seen.has(decoded)) continue;
+      seen.add(decoded);
       results.push(decoded);
     }
     if (results.length > 0) {
@@ -728,7 +807,7 @@ async function importGeminiShare(url: URL): Promise<ImportedShareDocument> {
   try {
     const readerOutput = await fetchText(`https://r.jina.ai/http://${normalizedUrl.href}`, {}, { profile: "reader" });
     const markdown = parseReaderMarkdown(readerOutput);
-    const parsed = cleanGeminiReaderMarkdown(markdown, normalizedUrl.href);
+    const parsed = cleanGeminiReaderMarkdown(markdown, normalizedUrl.href, extractReaderTitle(readerOutput));
     if (parsed.text && !isLikelyInvalidShareBody(parsed.text)) {
       return {
         source: "gemini",
@@ -746,7 +825,7 @@ async function importGeminiShare(url: URL): Promise<ImportedShareDocument> {
   try {
     const proxiedReaderOutput = await fetchTextViaCodeTabs(`https://r.jina.ai/http://${normalizedUrl.href}`);
     const markdown = parseReaderMarkdown(proxiedReaderOutput);
-    const parsed = cleanGeminiReaderMarkdown(markdown, normalizedUrl.href);
+    const parsed = cleanGeminiReaderMarkdown(markdown, normalizedUrl.href, extractReaderTitle(proxiedReaderOutput));
     if (parsed.text && !isLikelyInvalidShareBody(parsed.text)) {
       return {
         source: "gemini",
