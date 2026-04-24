@@ -513,6 +513,8 @@ async function fetchText(url: string, init: RequestInit = {}): Promise<string> {
 }
 
 async function importGeminiShare(url: URL): Promise<ImportedShareDocument> {
+  const failures: string[] = [];
+
   try {
     const buildLabel = await fetchGeminiBuildLabel();
     const rpcParsed = await fetchGeminiRpcMarkdown(url, buildLabel);
@@ -524,7 +526,9 @@ async function importGeminiShare(url: URL): Promise<ImportedShareDocument> {
         url: url.href,
       };
     }
+    failures.push("rpc-empty");
   } catch {
+    failures.push("rpc-fetch");
     // Gemini 公开分享页的主站抓取在不同网络环境下表现不稳定，继续尝试阅读代理。
   }
 
@@ -540,7 +544,9 @@ async function importGeminiShare(url: URL): Promise<ImportedShareDocument> {
         url: url.href,
       };
     }
+    failures.push("reader-invalid");
   } catch {
+    failures.push("reader-fetch");
     // Gemini 公开分享页有时会触发代理抓取失败，继续使用 HTML 回退。
   }
 
@@ -555,15 +561,18 @@ async function importGeminiShare(url: URL): Promise<ImportedShareDocument> {
         url: url.href,
       };
     }
+    failures.push("html-invalid");
   } catch {
+    failures.push("html-fetch");
     // direct html fallback
   }
 
-  throw new Error("Gemini 分享内容抓取失败，请稍后重试或直接粘贴文本。");
+  throw new Error(`Gemini 分享内容抓取失败，请稍后重试或直接粘贴文本。(${failures.join(" | ")})`);
 }
 
 async function importChatGptShare(url: URL): Promise<ImportedShareDocument> {
   let readerFallback: ImportedShareDocument | null = null;
+  const failures: string[] = [];
 
   try {
     const readerOutput = await fetchText(`https://r.jina.ai/http://${url.href}`);
@@ -577,7 +586,9 @@ async function importChatGptShare(url: URL): Promise<ImportedShareDocument> {
         url: url.href,
       };
     }
+    failures.push("reader-invalid");
   } catch {
+    failures.push("reader-fetch");
     // reader first fallback
   }
 
@@ -596,7 +607,9 @@ async function importChatGptShare(url: URL): Promise<ImportedShareDocument> {
         url: url.href,
       };
     }
+    failures.push("html-invalid");
   } catch {
+    failures.push("html-fetch");
     // ChatGPT 分享页直连在部分环境会被挑战页或证书代理影响，失败后继续回退。
   }
 
@@ -604,7 +617,7 @@ async function importChatGptShare(url: URL): Promise<ImportedShareDocument> {
     return readerFallback;
   }
 
-  throw new Error("ChatGPT 分享内容抓取失败，请稍后重试或直接粘贴文本。");
+  throw new Error(`ChatGPT 分享内容抓取失败，请稍后重试或直接粘贴文本。(${failures.join(" | ")})`);
 }
 
 export async function importSharedConversation(rawUrl: string): Promise<ImportedShareDocument> {
