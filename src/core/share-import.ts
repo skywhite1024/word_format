@@ -1,4 +1,4 @@
-import { deepRepairText } from "./text-repair";
+﻿import { deepRepairText } from "./text-repair";
 
 export type ShareSource = "chatgpt" | "gemini";
 
@@ -544,16 +544,33 @@ async function importGeminiShare(url: URL): Promise<ImportedShareDocument> {
     // Gemini 公开分享页有时会触发代理抓取失败，继续使用 HTML 回退。
   }
 
+  try {
+    const html = await fetchText(url.href);
+    const parsed = parseGeminiHtmlFallback(html, url.href);
+    if (parsed.text && !isLikelyInvalidShareBody(parsed.text)) {
+      return {
+        source: "gemini",
+        title: parsed.title,
+        text: parsed.text,
+        url: url.href,
+      };
+    }
+  } catch {
+    // direct html fallback
+  }
+
   throw new Error("Gemini 分享内容抓取失败，请稍后重试或直接粘贴文本。");
 }
 
 async function importChatGptShare(url: URL): Promise<ImportedShareDocument> {
+  let readerFallback: ImportedShareDocument | null = null;
+
   try {
     const readerOutput = await fetchText(`https://r.jina.ai/http://${url.href}`);
     const markdown = parseReaderMarkdown(readerOutput);
     const parsed = cleanChatGptReaderMarkdown(markdown, url.href, extractReaderTitle(readerOutput));
     if (parsed.text && !isLikelyInvalidShareBody(parsed.text)) {
-      return {
+      readerFallback = {
         source: "chatgpt",
         title: parsed.title,
         text: parsed.text,
@@ -583,36 +600,11 @@ async function importChatGptShare(url: URL): Promise<ImportedShareDocument> {
     // ChatGPT 分享页直连在部分环境会被挑战页或证书代理影响，失败后继续回退。
   }
 
-  try {
-    const readerOutput = await fetchText(`https://r.jina.ai/http://${url.href}`);
-    const markdown = parseReaderMarkdown(readerOutput);
-    const parsed = cleanChatGptReaderMarkdown(markdown, url.href, extractReaderTitle(readerOutput));
-    if (parsed.text && !isLikelyInvalidShareBody(parsed.text)) {
-      return {
-        source: "chatgpt",
-        title: parsed.title,
-        text: parsed.text,
-        url: url.href,
-      };
-    }
-  } catch {
-    // ChatGPT 分享页在 Worker 环境中直连经常被拒绝，优先尝试公开阅读代理，失败后再回退。
+  if (readerFallback) {
+    return readerFallback;
   }
 
-  const html = await fetchText(url.href);
-  const title = extractChatGptTitle(html);
-  const parts = extractChatGptMessageParts(html);
-
-  if (parts.length === 0) {
-    throw new Error("ChatGPT 分享页内容解析失败。");
-  }
-
-  return {
-    source: "chatgpt",
-    title,
-    text: normalizeImportText(title, parts),
-    url: url.href,
-  };
+  throw new Error("ChatGPT 分享内容抓取失败，请稍后重试或直接粘贴文本。");
 }
 
 export async function importSharedConversation(rawUrl: string): Promise<ImportedShareDocument> {

@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+﻿import { describe, expect, it, vi } from "vitest";
 import worker from "../src/worker";
 
 describe("worker api", () => {
@@ -331,7 +331,7 @@ describe("worker api", () => {
     }
   });
 
-  it("should fallback to chatgpt share page html after html and reader attempts fail", async () => {
+  it("should return chatgpt import error after reader and html attempts fail", async () => {
     const originalFetch = globalThis.fetch;
     vi.stubGlobal(
       "fetch",
@@ -371,12 +371,9 @@ describe("worker api", () => {
         ASSETS: { fetch: async () => new Response("not found", { status: 404 }) },
       } as any);
 
-      expect(response.status).toBe(200);
-      const data = (await response.json()) as { source: string; title: string; text: string };
-      expect(data.source).toBe("chatgpt");
-      expect(data.title).toBe("测试标题");
-      expect(data.text).toContain("请输出一个摘要");
-      expect(data.text).toContain("这是导入后的正文内容。");
+      expect(response.status).toBe(400);
+      const data = (await response.json()) as { error: string };
+      expect(data.error).toContain("ChatGPT");
     } finally {
       vi.stubGlobal("fetch", originalFetch);
     }
