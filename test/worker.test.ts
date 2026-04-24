@@ -92,12 +92,12 @@ describe("worker api", () => {
     const readerContent = [
       "Title: Gemini - direct access to Google AI",
       "",
-      "URL Source: https://gemini.google.com/share/demo",
+      "URL Source: https://bard.google.com/share/demo",
       "",
       "Markdown Content:",
       "# **高三三角函数常用值与技巧**",
       "",
-      "[https://gemini.google.com/share/demo](https://gemini.google.com/share/demo)",
+      "[https://bard.google.com/share/demo](https://bard.google.com/share/demo)",
       "",
       "Created with Pro Published today",
       "",
@@ -108,13 +108,21 @@ describe("worker api", () => {
     ].join("\n");
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockImplementation(
-        async () =>
+      vi
+        .fn()
+        .mockRejectedValueOnce(new Error("bard root unavailable"))
+        .mockResolvedValueOnce(
+          new Response("<html><body>missing build label</body></html>", {
+            status: 200,
+            headers: { "Content-Type": "text/html; charset=utf-8" },
+          }),
+        )
+        .mockResolvedValueOnce(
           new Response(readerContent, {
             status: 200,
             headers: { "Content-Type": "text/plain; charset=utf-8" },
           }),
-      ),
+        ),
     );
 
     try {
@@ -136,12 +144,19 @@ describe("worker api", () => {
       expect(data.title).toBe("高三三角函数常用值与技巧");
       expect(data.text).toContain("## 你说");
       expect(data.text).toContain("这是整理后的正文。");
+      expect(vi.mocked(globalThis.fetch).mock.calls[0]?.[0]).toBe("https://bard.google.com/");
+      expect(vi.mocked(globalThis.fetch).mock.calls[1]?.[0]).toBe(
+        "https://api.codetabs.com/v1/proxy?quest=https%3A%2F%2Fbard.google.com%2Fshare%2Fdemo",
+      );
+      expect(vi.mocked(globalThis.fetch).mock.calls[2]?.[0]).toContain(
+        "r.jina.ai/http://https://bard.google.com/share/demo",
+      );
     } finally {
       vi.stubGlobal("fetch", originalFetch);
     }
   });
 
-  it("should import gemini share content from share rpc before reader fallback", async () => {
+  it("should import gemini share content from bard rpc before reader fallback", async () => {
     const originalFetch = globalThis.fetch;
     const rpcPayload = JSON.stringify([
       null,
@@ -216,6 +231,10 @@ describe("worker api", () => {
       expect(data.text).toContain("模型形式");
       expect(data.text).toContain("\\theta");
       expect(data.text).toContain("\\hat{y} = w^T x + b");
+      expect(vi.mocked(globalThis.fetch).mock.calls[0]?.[0]).toBe("https://bard.google.com/");
+      expect(vi.mocked(globalThis.fetch).mock.calls[1]?.[0]).toContain(
+        "https://bard.google.com/_/BardChatUi/data/batchexecute",
+      );
     } finally {
       vi.stubGlobal("fetch", originalFetch);
     }
@@ -331,6 +350,62 @@ describe("worker api", () => {
     }
   });
 
+  it("should import chatgpt share content from codetabs html when direct fetch fails", async () => {
+    const originalFetch = globalThis.fetch;
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockRejectedValueOnce(new Error("html unavailable"))
+        .mockResolvedValueOnce(
+          new Response(
+            [
+              "<html><head><title>机器学习公式介绍</title></head><body>",
+              "<h4>你说：</h4><div>详细介绍一下机器学习中的各种公式</div>",
+              "<h4>ChatGPT 说：</h4>",
+              '<script nonce="test">',
+              'window.__reactRouterContext={};window.__reactRouterContext.streamController={enqueue(){}};',
+              'window.__reactRouterContext.streamController.enqueue("[{\\"_1\\":2},\\"pageTitle\\",\\"机器学习公式介绍\\",\\"content_type\\",\\"text\\",\\"parts\\",[1],\\"下面这份可以当作“机器学习公式总览”。\\\\n\\\\n1. **模型形式 \\\\\\\\(f_\\\\theta\\\\\\\\) 不同**\\\\n\\\\n\\\\\\\\[\\\\n\\\\hat{y} = w^T x + b\\\\n\\\\\\\\]\\" ]");',
+              "</script>",
+              "</body></html>",
+            ].join(""),
+            {
+              status: 200,
+              headers: { "Content-Type": "text/html; charset=utf-8" },
+            },
+          ),
+        ),
+    );
+
+    try {
+      const request = new Request("https://example.com/api/import/share", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          url: "https://chatgpt.com/share/demo-id",
+        }),
+      });
+
+      const response = await worker.fetch(request, {
+        ASSETS: { fetch: async () => new Response("not found", { status: 404 }) },
+      } as any);
+
+      expect(response.status).toBe(200);
+      const data = (await response.json()) as { source: string; title: string; text: string };
+      expect(data.source).toBe("chatgpt");
+      expect(data.title).toBe("机器学习公式介绍");
+      expect(data.text).toContain("## 你说");
+      expect(data.text).toContain("## ChatGPT");
+      expect(data.text).toContain("模型形式");
+      expect(data.text).toContain("\\hat{y} = w^T x + b");
+      expect(vi.mocked(globalThis.fetch).mock.calls[1]?.[0]).toBe(
+        "https://api.codetabs.com/v1/proxy?quest=https%3A%2F%2Fchatgpt.com%2Fshare%2Fdemo-id",
+      );
+    } finally {
+      vi.stubGlobal("fetch", originalFetch);
+    }
+  });
+
   it("should retry chatgpt share html after cloudflare challenge response", async () => {
     const originalFetch = globalThis.fetch;
     vi.stubGlobal(
@@ -398,13 +473,14 @@ describe("worker api", () => {
     }
   });
 
-  it("should return chatgpt import error after reader and html attempts fail", async () => {
+  it("should return chatgpt import error after html, codetabs, and reader attempts fail", async () => {
     const originalFetch = globalThis.fetch;
     vi.stubGlobal(
       "fetch",
       vi
         .fn()
         .mockRejectedValueOnce(new Error("html unavailable"))
+        .mockRejectedValueOnce(new Error("codetabs unavailable"))
         .mockRejectedValueOnce(new Error("reader unavailable")),
     );
 

@@ -28,6 +28,7 @@ const READER_REQUEST_HEADERS = {
   "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
 };
 
+const CODETABS_PROXY_BASE = "https://api.codetabs.com/v1/proxy?quest=";
 const GEMINI_RPC_ID = "ujx1Bf";
 
 function decodeJsonStringToken(raw: string): string {
@@ -365,8 +366,8 @@ function extractGeminiBuildLabel(html: string): string {
   return html.match(/boq_assistant-bard-web-server_[^"'&\s<]+/)?.[0] ?? "";
 }
 
-async function fetchGeminiBuildLabel(): Promise<string> {
-  const html = await fetchText("https://gemini.google.com/", {}, { allowChallengeRetry: true });
+async function fetchGeminiBuildLabel(baseOrigin = "https://gemini.google.com"): Promise<string> {
+  const html = await fetchText(`${baseOrigin}/`, {}, { allowChallengeRetry: true });
   const buildLabel = extractGeminiBuildLabel(html);
   if (!buildLabel) {
     throw new Error("Gemini 构建标识抓取失败。");
@@ -498,12 +499,16 @@ function createGeminiRpcBody(shareId: string): string {
   return `f.req=${encodeURIComponent(JSON.stringify([[[GEMINI_RPC_ID, JSON.stringify([null, shareId, [4]]), null, "generic"]]]))}&`;
 }
 
-async function fetchGeminiRpcMarkdown(url: URL, buildLabel: string): Promise<{ title: string; text: string } | null> {
+async function fetchGeminiRpcMarkdown(
+  url: URL,
+  buildLabel: string,
+  baseOrigin = "https://gemini.google.com",
+): Promise<{ title: string; text: string } | null> {
   const shareId = url.pathname.split("/").filter(Boolean).at(-1) ?? "";
   if (!shareId || !buildLabel) return null;
 
   const rpcUrl =
-    `https://gemini.google.com/_/BardChatUi/data/batchexecute?rpcids=${GEMINI_RPC_ID}` +
+    `${baseOrigin}/_/BardChatUi/data/batchexecute?rpcids=${GEMINI_RPC_ID}` +
     `&source-path=${encodeURIComponent(url.pathname)}` +
     `&bl=${encodeURIComponent(buildLabel)}` +
     `&hl=zh-CN&_reqid=${Date.now() % 1000000}&rt=c`;
@@ -512,7 +517,7 @@ async function fetchGeminiRpcMarkdown(url: URL, buildLabel: string): Promise<{ t
     headers: {
       "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
       "X-Same-Domain": "1",
-      Referer: "https://gemini.google.com/",
+      Referer: `${baseOrigin}/`,
     },
     body: createGeminiRpcBody(shareId),
   }, { allowChallengeRetry: true });
@@ -546,7 +551,10 @@ function detectShareSource(url: URL): ShareSource {
   if (url.hostname === "chatgpt.com" && url.pathname.startsWith("/share/")) {
     return "chatgpt";
   }
-  if (url.hostname === "gemini.google.com" && url.pathname.startsWith("/share/")) {
+  if (
+    (url.hostname === "gemini.google.com" || url.hostname === "bard.google.com") &&
+    url.pathname.startsWith("/share/")
+  ) {
     return "gemini";
   }
   throw new Error("当前仅支持 ChatGPT 与 Gemini 的公开分享链接。");
@@ -617,6 +625,16 @@ function isCloudflareChallengeResponse(response: Response): boolean {
   return response.status === 403 && /challenge/i.test(response.headers.get("cf-mitigated") ?? "");
 }
 
+function buildCodeTabsProxyUrl(targetUrl: string): string {
+  return `${CODETABS_PROXY_BASE}${encodeURIComponent(targetUrl)}`;
+}
+
+function buildBardShareUrl(url: URL): URL {
+  const normalized = new URL(url.href);
+  normalized.hostname = "bard.google.com";
+  return normalized;
+}
+
 async function fetchText(
   url: string,
   init: RequestInit = {},
@@ -646,7 +664,44 @@ async function fetchText(
   return response.text();
 }
 
+async function fetchTextViaCodeTabs(url: string, init: RequestInit = {}): Promise<string> {
+  return fetchText(buildCodeTabsProxyUrl(url), init);
+}
+
+async function fetchGeminiBuildLabelForShare(url: URL): Promise<string> {
+  try {
+    return await fetchGeminiBuildLabel("https://bard.google.com");
+  } catch {
+    const proxiedHtml = await fetchTextViaCodeTabs(url.href);
+    const buildLabel = extractGeminiBuildLabel(proxiedHtml);
+    if (!buildLabel) {
+      throw new Error("Gemini 构建标识抓取失败。");
+    }
+    return buildLabel;
+  }
+}
+
+function parseChatGptHtmlDocument(html: string): { title: string; text: string } | null {
+  const title = extractChatGptTitle(html);
+  const parts = extractChatGptMessageParts(html);
+  const prompt = extractChatGptPromptFromHtml(html);
+
+  if (parts.length === 0) {
+    return null;
+  }
+
+  const sections = prompt
+    ? [`## 你说\n${prompt}`, `## ChatGPT\n${parts[0]}`, ...parts.slice(1)]
+    : [`## ChatGPT\n${parts[0]}`, ...parts.slice(1)];
+
+  return {
+    title,
+    text: normalizeImportText(title, sections),
+  };
+}
+
 async function importGeminiShare(url: URL): Promise<ImportedShareDocument> {
+  const normalizedUrl = buildBardShareUrl(url);
   const failures: string[] = [];
   const pushFailure = (step: string, error?: unknown) => {
     const detail = error instanceof Error ? error.message : "";
@@ -654,8 +709,8 @@ async function importGeminiShare(url: URL): Promise<ImportedShareDocument> {
   };
 
   try {
-    const buildLabel = await fetchGeminiBuildLabel();
-    const rpcParsed = await fetchGeminiRpcMarkdown(url, buildLabel);
+    const buildLabel = await fetchGeminiBuildLabelForShare(normalizedUrl);
+    const rpcParsed = await fetchGeminiRpcMarkdown(normalizedUrl, buildLabel, "https://bard.google.com");
     if (rpcParsed?.text) {
       return {
         source: "gemini",
@@ -667,13 +722,13 @@ async function importGeminiShare(url: URL): Promise<ImportedShareDocument> {
     failures.push("rpc-empty");
   } catch (error) {
     pushFailure("rpc-fetch", error);
-    // Gemini 公开分享页的主站抓取在不同网络环境下表现不稳定，继续尝试阅读代理。
+    // Bard RPC 失败后退回阅读代理。
   }
 
   try {
-    const readerOutput = await fetchText(`https://r.jina.ai/http://${url.href}`, {}, { profile: "reader" });
+    const readerOutput = await fetchText(`https://r.jina.ai/http://${normalizedUrl.href}`, {}, { profile: "reader" });
     const markdown = parseReaderMarkdown(readerOutput);
-    const parsed = cleanGeminiReaderMarkdown(markdown, url.href);
+    const parsed = cleanGeminiReaderMarkdown(markdown, normalizedUrl.href);
     if (parsed.text && !isLikelyInvalidShareBody(parsed.text)) {
       return {
         source: "gemini",
@@ -685,12 +740,12 @@ async function importGeminiShare(url: URL): Promise<ImportedShareDocument> {
     failures.push("reader-invalid");
   } catch (error) {
     pushFailure("reader-fetch", error);
-    // Gemini 公开分享页有时会触发代理抓取失败，继续使用 HTML 回退。
+    // 阅读代理失败后再回退到直连 HTML。
   }
 
   try {
-    const html = await fetchText(url.href, {}, { allowChallengeRetry: true });
-    const parsed = parseGeminiHtmlFallback(html, url.href);
+    const html = await fetchText(normalizedUrl.href, {}, { allowChallengeRetry: true });
+    const parsed = parseGeminiHtmlFallback(html, normalizedUrl.href);
     if (parsed.text && !isLikelyInvalidShareBody(parsed.text)) {
       return {
         source: "gemini",
@@ -718,16 +773,12 @@ async function importChatGptShare(url: URL): Promise<ImportedShareDocument> {
 
   try {
     const html = await fetchText(url.href, {}, { allowChallengeRetry: true });
-    const title = extractChatGptTitle(html);
-    const parts = extractChatGptMessageParts(html);
-    const prompt = extractChatGptPromptFromHtml(html);
-
-    if (parts.length > 0) {
-      const sections = prompt ? [`## 你说\n${prompt}`, `## ChatGPT\n${parts[0]}`, ...parts.slice(1)] : [`## ChatGPT\n${parts[0]}`, ...parts.slice(1)];
+    const parsed = parseChatGptHtmlDocument(html);
+    if (parsed) {
       return {
         source: "chatgpt",
-        title,
-        text: normalizeImportText(title, sections),
+        title: parsed.title,
+        text: parsed.text,
         url: url.href,
       };
     }
@@ -735,6 +786,23 @@ async function importChatGptShare(url: URL): Promise<ImportedShareDocument> {
   } catch (error) {
     pushFailure("html-fetch", error);
     // ChatGPT 分享页直连在部分环境会被挑战页或证书代理影响，失败后继续回退。
+  }
+
+  try {
+    const proxiedHtml = await fetchTextViaCodeTabs(url.href);
+    const parsed = parseChatGptHtmlDocument(proxiedHtml);
+    if (parsed) {
+      return {
+        source: "chatgpt",
+        title: parsed.title,
+        text: parsed.text,
+        url: url.href,
+      };
+    }
+    failures.push("codetabs-invalid");
+  } catch (error) {
+    pushFailure("codetabs-fetch", error);
+    // codetabs fallback
   }
 
   try {
