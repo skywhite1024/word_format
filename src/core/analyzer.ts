@@ -20,13 +20,17 @@ export function sanitizeMarkdownText(rawText: string): string {
   const unified = rawText.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
   const withoutFences = unified.replace(/^```[\w-]*\s*$/gm, "");
 
-  const withHeadingMarkers = withoutFences.replace(
-    /(^|\n)([ \t]{0,3})(#{1,6})[ \t]+/g,
-    (_match, prefix: string, indent: string, hashes: string) =>
-      `${prefix}${indent}${MD_HEADING_PREFIX}${Math.min(hashes.length, 3)} `,
-  );
-
-  const cleaned = withHeadingMarkers
+  const cleaned = withoutFences
+    .replace(
+      /(^|\n)([ \t]{0,3})(#{1,6})[ \t]+([^\n]*)/g,
+      (_match, prefix: string, indent: string, hashes: string, content: string) => {
+        const trimmed = content.trim();
+        if (/^\\[A-Za-z]+/.test(trimmed)) {
+          return `${prefix}${indent}${hashes} ${trimmed}`;
+        }
+        return `${prefix}${indent}${MD_HEADING_PREFIX}${Math.min(hashes.length, 3)} ${trimmed}`;
+      },
+    )
     .replace(/(^|\n)[ \t]{0,3}>[ \t]?/g, "$1")
     .replace(/(^|\n)[ \t]*([-*_])[ \t]*\2[ \t]*\2(?:[ \t]*\2+)?[ \t]*(?=\n|$)/g, "$1")
     .replace(/^([ \t]*[-+*][ \t]+)/gm, "")
@@ -46,10 +50,8 @@ export function sanitizeMarkdownText(rawText: string): string {
 function extractMarkdownHeadingLevel(paragraph: string): number | null {
   const match = paragraph.trim().match(new RegExp(`^${MD_HEADING_PREFIX}(\\d)\\s+`));
   if (!match) return null;
-
   const level = Number.parseInt(match[1], 10);
-  if (!Number.isFinite(level) || level <= 0) return null;
-  return Math.min(level, 3);
+  return Number.isFinite(level) && level > 0 ? Math.min(level, 3) : null;
 }
 
 function stripMarkdownHeadingMarker(text: string): string {
@@ -135,9 +137,7 @@ function isLikelyTitle(paragraph: string): boolean {
   const p = markdownLevel !== null ? stripMarkdownHeadingMarker(paragraph) : paragraph.trim();
   if (!p || p.length > 45) return false;
   if (markdownLevel !== null) {
-    if (/^(?:\d+[.)]|[（(]?\d+[）)]|[一二三四五六七八九十百]+、)\s*/.test(p)) {
-      return false;
-    }
+    if (/^\d+(?:\.\d+)*\.?\s+\S/.test(p)) return false;
   } else if (headingLevel(p) !== null) {
     return false;
   }

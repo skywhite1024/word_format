@@ -259,7 +259,8 @@ describe("docx-builder", () => {
     expect(docContent).toContain("<m:sSup>");
     expect(docContent).toContain("<m:sSubSup>");
     expect(docContent).toContain("<m:t>2</m:t>");
-    expect(docContent).toContain("<m:t>‖</m:t>");
+    expect(docContent).toContain("<m:t>|</m:t>");
+    expect(docContent).not.toContain("<m:t>‖</m:t>");
   });
 
   it("should keep bracketed multiline equations as one numbered equation", async () => {
@@ -500,32 +501,40 @@ describe("docx-builder", () => {
     expect(docContent).toContain("<m:f>");
     expect(docContent).toContain("<m:sSub>");
     expect(docContent).toContain("<m:sSup>");
-    expect(docContent).toContain("<m:t>‖</m:t>");
-    expect(docContent).not.toContain("<m:t>|</m:t>");
+    expect(docContent).toContain("<m:t>|</m:t>");
+    expect(docContent).not.toContain("<m:t>‖</m:t>");
+    expect(docContent).not.toContain("<m:t>\\</m:t>");
   });
 
-  it("should consume doubly escaped norm delimiters without leaving literal backslashes", async () => {
+  it("should parse raw double-bar norm delimiters without converting to a single glyph", async () => {
     const structured: StructuredDoc = {
       mode: "official",
-      title: "双重转义范数测试",
+      title: "双竖线范数测试",
       blocks: [
+        {
+          type: "paragraph",
+          level: 0,
+          text: "$$J(w)=\\frac{1}{n}\\sum_{i=1}^{n}(\\hat y_i-y_i)^2+\\lambda ||w||_2^2$$",
+        },
         {
           type: "paragraph",
           level: 0,
           text: "$$J(w)=\\frac{1}{n}\\sum_{i=1}^{n}(\\hat y_i-y_i)^2+\\lambda \\\\|w\\\\|_2^2$$",
         },
       ],
-      stats: { paragraphCount: 1, headingCount: 0, referenceCount: 0 },
+      stats: { paragraphCount: 2, headingCount: 0, referenceCount: 0 },
     };
 
     const bytes = await buildDocx(structured);
     const zip = await JSZip.loadAsync(bytes);
     const documentXml = await zip.file("word/document.xml")?.async("string");
     const docContent = documentXml ?? "";
+    const pipeRunCount = docContent.match(/<m:t>\|<\/m:t>/g)?.length ?? 0;
 
-    expect(docContent).toContain("<m:t>‖</m:t>");
+    expect(docContent).toContain("<m:sSubSup>");
+    expect(pipeRunCount).toBe(8);
+    expect(docContent).not.toContain("<m:t>‖</m:t>");
     expect(docContent).not.toContain("<m:t>\\</m:t>");
-    expect(docContent).not.toContain("<m:t>|</m:t>");
   });
 
   it("should normalize right arrow blocks into math arrows instead of literal command text", async () => {
@@ -626,6 +635,7 @@ describe("docx-builder", () => {
     expect(docContent).toContain("<m:t>q</m:t>");
     expect(docContent).toContain("<m:t>KL</m:t>");
     expect(docContent.match(/SEQ Equation/g)?.length ?? 0).toBe(3);
+    expect(docContent).not.toContain("MDHEADING");
   });
 
   it("should emit native fraction radical and n-ary nodes for advanced formulas", async () => {

@@ -251,22 +251,28 @@ describe("analyzeText", () => {
     expect(result.blocks[1]?.text).toContain("正则项");
   });
 
-  it("should preserve markdown numeric headings as heading blocks instead of list paragraphs", () => {
+  it("should classify markdown numeric headings as heading blocks", () => {
     const text = [
-      "文档标题",
+      "机器学习公式介绍",
       "",
       "# 1. 机器学习里最核心的总公式",
       "",
-      "这里是正文。",
+      "几乎所有监督学习，都可以写成这个形式：",
+      "",
+      "## 2.4 Ridge 和 Lasso",
+      "",
+      "### Ridge（L2 正则）",
     ].join("\n");
 
     const result = analyzeText(text, "official");
-    const heading = result.blocks.find(
-      (block) => block.type === "heading" && block.text === "1. 机器学习里最核心的总公式",
-    );
+    const headings = result.blocks.filter((block) => block.type === "heading");
 
-    expect(heading).toBeDefined();
-    expect(heading?.level).toBe(1);
-    expect(result.blocks[1]?.type).toBe("paragraph");
+    expect(result.title).toBe("机器学习公式介绍");
+    expect(headings.map((block) => block.text)).toEqual([
+      "1. 机器学习里最核心的总公式",
+      "2.4 Ridge 和 Lasso",
+      "Ridge（L2 正则）",
+    ]);
+    expect(headings.map((block) => block.level)).toEqual([1, 2, 3]);
   });
 });

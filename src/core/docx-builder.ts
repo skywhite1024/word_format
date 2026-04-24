@@ -49,7 +49,6 @@ const SCRIPT_CLOSE = "__SCRIPT_CLOSE__";
 const CHAR_SUM = "\u2211";
 const CHAR_INTEGRAL = "\u222B";
 const CHAR_SQRT = "\u221A";
-const CHAR_NORM = "\u2016";
 
 interface BuildDocxOptions {
   mathItalic?: boolean;
@@ -416,15 +415,15 @@ function normalizeLatexLikeText(text: string): string {
     .replace(/\\arg\\max/g, "argmax")
     .replace(/\\arg\\min/g, "argmin")
     .replace(/\\dot\{([^{}]+)\}/g, "$1̇")
+    .replace(/\\[;,!:]/g, " ")
     .replace(/\\left/g, "")
     .replace(/\\right/g, "")
-    .replace(/\\+lVert/g, CHAR_NORM)
-    .replace(/\\+rVert/g, CHAR_NORM)
-    .replace(/\\Vert/g, CHAR_NORM)
-    .replace(/\\+\|/g, CHAR_NORM)
-    .replace(/\|\|/g, CHAR_NORM)
-    .replace(new RegExp(`\\\\+${CHAR_NORM}`, "g"), CHAR_NORM)
-    .replace(new RegExp(`${CHAR_NORM}\\\\+`, "g"), CHAR_NORM)
+    .replace(/\\+lVert/g, "||")
+    .replace(/\\+rVert/g, "||")
+    .replace(/\\+Vert/g, "||")
+    .replace(/\\+\|/g, "||")
+    .replace(/‖/g, "||")
+    .replace(/\\\\+/g, " ")
     .replace(/\\cdot/g, "·")
     .replace(/\\times/g, "×")
     .replace(/\\leq/g, "≤")
@@ -438,6 +437,7 @@ function normalizeLatexLikeText(text: string): string {
     .replace(/\\_/g, "_")
     .replace(/\\forall/g, "∀")
     .replace(/\\([A-Za-z]+)/g, "$1")
+    .replace(/\\/g, " ")
     .replace(/([A-Za-zΑ-Ωα-ωτΔΣ0-9)\]̂̃̄])_\{([^{}]+)\}/g, "$1_$2")
     .replace(/([A-Za-zΑ-Ωα-ωτΔΣ0-9)\]̂̃̄])_([A-Za-zΑ-Ωα-ωτΔΣ0-9∞]+)/g, "$1_$2")
     .replace(/([A-Za-zΑ-Ωα-ωτΔΣ0-9)\]̂̃̄])\^\{([^{}]+)\}/g, "$1^$2")
@@ -457,7 +457,7 @@ function isMathBaseStart(ch: string): boolean {
 }
 
 function isScriptBaseSymbol(ch: string): boolean {
-  return /[)\]\}|‖]/.test(ch);
+  return /[)\]\}|]/.test(ch);
 }
 
 function isMathBaseChar(ch: string): boolean {
@@ -465,7 +465,7 @@ function isMathBaseChar(ch: string): boolean {
 }
 
 function isScriptTerminator(ch: string): boolean {
-  return /[\s+\-*/<>≤≥×÷|‖(),;:]/.test(ch);
+  return /[\s+\-*/<>≤≥×÷|(),;:]/.test(ch);
 }
 
 function readScriptValue(text: string, start: number): { value: string; end: number } {
@@ -752,7 +752,7 @@ function readDelimitedFenceGroup(
   start: number,
   delimiter: string,
 ): { children: MathComponent[]; end: number } | null {
-  if (expression[start] !== delimiter) {
+  if (!expression.startsWith(delimiter, start)) {
     return null;
   }
 
@@ -760,7 +760,7 @@ function readDelimitedFenceGroup(
   let squareDepth = 0;
   let braceDepth = 0;
 
-  for (let cursor = start + 1; cursor < expression.length; cursor += 1) {
+  for (let cursor = start + delimiter.length; cursor < expression.length; cursor += 1) {
     const ch = expression[cursor];
     if (ch === "(") {
       roundDepth += 1;
@@ -793,16 +793,16 @@ function readDelimitedFenceGroup(
       continue;
     }
 
-    if (ch === delimiter && roundDepth === 0 && squareDepth === 0 && braceDepth === 0) {
-      const inner = expression.slice(start + 1, cursor).trim();
-      const children: MathComponent[] = [new MathRun(delimiter)];
+    if (expression.startsWith(delimiter, cursor) && roundDepth === 0 && squareDepth === 0 && braceDepth === 0) {
+      const inner = expression.slice(start + delimiter.length, cursor).trim();
+      const children: MathComponent[] = [...delimiter].map((part) => new MathRun(part));
       if (inner) {
         children.push(...buildMathComponentsFromExpression(inner));
       }
-      children.push(new MathRun(delimiter));
+      children.push(...[...delimiter].map((part) => new MathRun(part)));
       return {
         children,
-        end: cursor + 1,
+        end: cursor + delimiter.length,
       };
     }
   }
@@ -829,7 +829,7 @@ function buildMathComponentsFromExpression(expression: string): MathComponent[] 
       continue;
     }
 
-    const normGroup = readDelimitedFenceGroup(expression, cursor, CHAR_NORM);
+    const normGroup = readDelimitedFenceGroup(expression, cursor, "||");
     if (normGroup) {
       const scripts = readMathScripts(expression, normGroup.end);
       if (scripts.subScript || scripts.superScript) {
