@@ -113,13 +113,47 @@ function isLikelyTitle(paragraph: string): boolean {
   return !SENTENCE_ENDINGS.some((end) => p.endsWith(end));
 }
 
+function isBracketMathStart(line: string): boolean {
+  const trimmed = line.trim();
+  return trimmed === "[" || trimmed === "\\[";
+}
+
+function isBracketMathEnd(line: string): boolean {
+  const trimmed = line.trim();
+  return trimmed === "]" || trimmed === "\\]";
+}
+
 function splitParagraphs(text: string): string[] {
   const lines = text.split("\n");
   const paragraphs: string[] = [];
   let buffer = "";
+  let mathBuffer: string[] | null = null;
 
   for (const rawLine of lines) {
     const line = rawLine.trim();
+
+    if (mathBuffer) {
+      mathBuffer.push(line);
+      if (isBracketMathEnd(line)) {
+        paragraphs.push(mathBuffer.join("\n"));
+        mathBuffer = null;
+      }
+      continue;
+    }
+
+    if (isBracketMathStart(line)) {
+      if (buffer) {
+        paragraphs.push(buffer);
+        buffer = "";
+      }
+      mathBuffer = [line];
+      if (isBracketMathEnd(line)) {
+        paragraphs.push(mathBuffer.join("\n"));
+        mathBuffer = null;
+      }
+      continue;
+    }
+
     if (!line) {
       if (buffer) {
         paragraphs.push(buffer);
@@ -152,6 +186,9 @@ function splitParagraphs(text: string): string[] {
 
   if (buffer) {
     paragraphs.push(buffer);
+  }
+  if (mathBuffer && mathBuffer.length > 0) {
+    paragraphs.push(mathBuffer.join("\n"));
   }
 
   return paragraphs;

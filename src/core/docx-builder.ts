@@ -184,26 +184,29 @@ function extractEquationText(raw: string): string {
   const blockMath = t.match(/^\$\$([\s\S]+)\$\$$/);
   if (blockMath) return blockMath[1].trim();
 
-  const latexBlock = t.match(/^\\\[([\s\S]+)\\\]$/);
-  if (latexBlock) {
-    return latexBlock[1]
+  const normalizeEquationBlockText = (block: string): string =>
+    block
       .split("\n")
       .map((line) => line.trim())
-      .filter((line) => line && !/^=+$/.test(line))
-      .map((line) => line.replace(/^#+\s*/, ""))
+      .filter(Boolean)
+      .flatMap((line) => {
+        if (/^=+$/.test(line)) {
+          return ["="];
+        }
+        return [line.replace(/^#+\s*/, "")];
+      })
+      .filter((part, index, all) => part !== "=" || (index > 0 && index < all.length - 1))
       .join(" ")
       .trim();
+
+  const latexBlock = t.match(/^\\\[([\s\S]+)\\\]$/);
+  if (latexBlock) {
+    return normalizeEquationBlockText(latexBlock[1]);
   }
 
   const bracketBlock = t.match(/^\[([\s\S]+)\]$/);
   if (bracketBlock) {
-    return bracketBlock[1]
-      .split("\n")
-      .map((line) => line.trim())
-      .filter((line) => line && !/^=+$/.test(line))
-      .map((line) => line.replace(/^#+\s*/, ""))
-      .join(" ")
-      .trim();
+    return normalizeEquationBlockText(bracketBlock[1]);
   }
 
   const inlineMath = t.match(/^\$([^\n]+)\$$/);
@@ -1216,8 +1219,15 @@ function isLikelyEquation(raw: string): boolean {
   const hasMathContext = /[A-Za-zα-ωΑ-Ω0-9]/.test(text) && /[+\-*/^=<>≤≥×÷_|[\]()]/.test(text);
   const hasChineseProse = /[\u4e00-\u9fff]{2,}/.test(text);
   const hasListLikePrefix = /^\s*(?:\d+[.)]|[（(]\d+[）)]|[-*•])\s+/.test(trimmed);
+  const proseOutsideInlineMath = trimmed
+    .replace(/^\s*(?:\d+[.)]|[（(]\d+[）)]|[-*•])\s+/, "")
+    .replace(/\*\*/g, "")
+    .replace(/\$[^$\n]+\$/g, "")
+    .replace(/[（(][^()（）\n]*[_^\\][^()（）\n]*[）)]/g, "")
+    .trim();
+  const hasProseOutsideMath = /[A-Za-z\u4e00-\u9fff]{2,}/.test(proseOutsideInlineMath);
 
-  if (hasListLikePrefix && hasChineseProse) {
+  if (hasListLikePrefix && (hasChineseProse || hasProseOutsideMath) && !hasEquationOperator) {
     return false;
   }
 

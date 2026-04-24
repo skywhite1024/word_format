@@ -260,6 +260,72 @@ describe("docx-builder", () => {
     expect(docContent).toContain("<m:t>|</m:t>");
   });
 
+  it("should keep bracketed multiline equations as one numbered equation", async () => {
+    const structured: StructuredDoc = {
+      mode: "official",
+      title: "PCA",
+      blocks: [
+        {
+          type: "paragraph",
+          level: 0,
+          text: [
+            "[",
+            "\\text{Explained Variance Ratio}_k",
+            "=================================",
+            "",
+            "\\frac{\\lambda_k}{\\sum_j \\lambda_j}",
+            "]",
+          ].join("\n"),
+        },
+      ],
+      stats: { paragraphCount: 1, headingCount: 0, referenceCount: 0 },
+    };
+
+    const bytes = await buildDocx(structured);
+    const zip = await JSZip.loadAsync(bytes);
+    const documentXml = await zip.file("word/document.xml")?.async("string");
+    const docContent = documentXml ?? "";
+
+    expect(docContent).toContain("(1)");
+    expect(docContent).not.toContain("(2)");
+    expect(docContent).toContain("<m:f>");
+    expect(docContent).toContain("<m:t>=</m:t>");
+    expect(docContent).toContain("<m:t>Explained</m:t>");
+    expect(docContent).toContain("<m:t>Variance</m:t>");
+    expect(docContent).toContain("<m:t>Ratio</m:t>");
+  });
+
+  it("should keep numbered prose with inline math as a normal paragraph", async () => {
+    const structured: StructuredDoc = {
+      mode: "official",
+      title: "Inline Math List",
+      blocks: [
+        {
+          type: "paragraph",
+          level: 0,
+          text: "1. **Model form (f_\\theta) differs**",
+        },
+        {
+          type: "paragraph",
+          level: 0,
+          text: "3. **Regularizer (\\Omega) differs**",
+        },
+      ],
+      stats: { paragraphCount: 2, headingCount: 0, referenceCount: 0 },
+    };
+
+    const bytes = await buildDocx(structured);
+    const zip = await JSZip.loadAsync(bytes);
+    const documentXml = await zip.file("word/document.xml")?.async("string");
+    const docContent = documentXml ?? "";
+
+    expect(docContent).not.toContain("<w:tbl>");
+    expect(docContent).not.toContain("(1)");
+    expect(docContent).toContain("<m:sSub>");
+    expect(docContent).toContain("Model");
+    expect(docContent).toContain("Regularizer");
+  });
+
   it("should render citations as superscript hyperlinks to references", async () => {
     const structured: StructuredDoc = {
       mode: "thesis",

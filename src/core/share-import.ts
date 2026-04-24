@@ -204,8 +204,11 @@ function isLikelyInvalidShareBody(text: string): boolean {
   const trimmed = text.trim();
   if (!trimmed) return true;
   if (trimmed.length < 24) return true;
+  if (/^Too many redirects\./i.test(trimmed)) return true;
 
   const compact = trimmed.replace(/\s+/g, " ");
+  if (/www\.google\.com\/sorry\/index/i.test(compact)) return true;
+  if (/google_abuse=GOOGLE_ABUSE_EXEMPTION/i.test(compact)) return true;
   if (
     /(?:^|\s)(Sign in|Gemini|About Gemini|Subscriptions|For Business)(?:\s|$)/i.test(compact) &&
     !/[。！？.!?]/.test(compact)
@@ -306,6 +309,15 @@ function extractChatGptMessageParts(html: string): string[] {
 
 function extractGeminiBuildLabel(html: string): string {
   return html.match(/boq_assistant-bard-web-server_[^"'&\s<]+/)?.[0] ?? "";
+}
+
+async function fetchGeminiBuildLabel(): Promise<string> {
+  const html = await fetchText("https://gemini.google.com/");
+  const buildLabel = extractGeminiBuildLabel(html);
+  if (!buildLabel) {
+    throw new Error("Gemini 构建标识抓取失败。");
+  }
+  return buildLabel;
 }
 
 function parseGeminiRpcLines(responseText: string): unknown[] {
@@ -432,9 +444,8 @@ function createGeminiRpcBody(shareId: string): string {
   return `f.req=${encodeURIComponent(JSON.stringify([[[GEMINI_RPC_ID, JSON.stringify([null, shareId, [4]]), null, "generic"]]]))}&`;
 }
 
-async function fetchGeminiRpcMarkdown(url: URL, html: string): Promise<{ title: string; text: string } | null> {
+async function fetchGeminiRpcMarkdown(url: URL, buildLabel: string): Promise<{ title: string; text: string } | null> {
   const shareId = url.pathname.split("/").filter(Boolean).at(-1) ?? "";
-  const buildLabel = extractGeminiBuildLabel(html);
   if (!shareId || !buildLabel) return null;
 
   const rpcUrl =
@@ -502,10 +513,9 @@ async function fetchText(url: string, init: RequestInit = {}): Promise<string> {
 }
 
 async function importGeminiShare(url: URL): Promise<ImportedShareDocument> {
-  let html = "";
   try {
-    html = await fetchText(url.href);
-    const rpcParsed = await fetchGeminiRpcMarkdown(url, html);
+    const buildLabel = await fetchGeminiBuildLabel();
+    const rpcParsed = await fetchGeminiRpcMarkdown(url, buildLabel);
     if (rpcParsed?.text) {
       return {
         source: "gemini",
@@ -534,23 +544,26 @@ async function importGeminiShare(url: URL): Promise<ImportedShareDocument> {
     // Gemini 公开分享页有时会触发代理抓取失败，继续使用 HTML 回退。
   }
 
-  if (!html) {
-    html = await fetchText(url.href);
-  }
-  const parsed = parseGeminiHtmlFallback(html, url.href);
-  if (!parsed.text || isLikelyInvalidShareBody(parsed.text)) {
-    throw new Error("Gemini 分享页内容解析失败。");
-  }
-
-  return {
-    source: "gemini",
-    title: parsed.title,
-    text: parsed.text,
-    url: url.href,
-  };
+  throw new Error("Gemini 分享内容抓取失败，请稍后重试或直接粘贴文本。");
 }
 
 async function importChatGptShare(url: URL): Promise<ImportedShareDocument> {
+  try {
+    const readerOutput = await fetchText(`https://r.jina.ai/http://${url.href}`);
+    const markdown = parseReaderMarkdown(readerOutput);
+    const parsed = cleanChatGptReaderMarkdown(markdown, url.href, extractReaderTitle(readerOutput));
+    if (parsed.text && !isLikelyInvalidShareBody(parsed.text)) {
+      return {
+        source: "chatgpt",
+        title: parsed.title,
+        text: parsed.text,
+        url: url.href,
+      };
+    }
+  } catch {
+    // reader first fallback
+  }
+
   try {
     const html = await fetchText(url.href);
     const title = extractChatGptTitle(html);
@@ -574,7 +587,7 @@ async function importChatGptShare(url: URL): Promise<ImportedShareDocument> {
     const readerOutput = await fetchText(`https://r.jina.ai/http://${url.href}`);
     const markdown = parseReaderMarkdown(readerOutput);
     const parsed = cleanChatGptReaderMarkdown(markdown, url.href, extractReaderTitle(readerOutput));
-    if (parsed.text) {
+    if (parsed.text && !isLikelyInvalidShareBody(parsed.text)) {
       return {
         source: "chatgpt",
         title: parsed.title,

@@ -205,4 +205,34 @@ describe("analyzeText", () => {
 
     expect(markerAsHeading).toBeUndefined();
   });
+
+  it("should keep bracketed multiline equations in a single paragraph block", () => {
+    const text = [
+      "PCA",
+      "",
+      "[",
+      "\\text{Explained Variance Ratio}_k",
+      "=================================",
+      "",
+      "\\frac{\\lambda_k}{\\sum_j \\lambda_j}",
+      "]",
+      "",
+      "This is explanation text.",
+    ].join("\n");
+
+    const result = analyzeText(text, "official");
+    const equationBlocks = result.blocks.filter(
+      (block) =>
+        block.type === "paragraph" &&
+        block.text.includes("Explained Variance Ratio") &&
+        block.text.includes("\\frac{\\lambda_k}{\\sum_j \\lambda_j}"),
+    );
+
+    expect(equationBlocks).toHaveLength(1);
+    expect(
+      result.blocks.some(
+        (block) => block.type === "paragraph" && block.text === "\\frac{\\lambda_k}{\\sum_j \\lambda_j}",
+      ),
+    ).toBe(false);
+  });
 });

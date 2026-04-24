@@ -280,11 +280,11 @@ describe("worker api", () => {
     }
   });
 
-  it("should prefer chatgpt html payload when it contains richer markdown content", async () => {
+  it("should fallback to chatgpt html payload when reader content is unavailable", async () => {
     const originalFetch = globalThis.fetch;
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockResolvedValue(
+      vi.fn().mockRejectedValueOnce(new Error("reader unavailable")).mockResolvedValue(
         new Response(
           [
             "<html><head><title>机器学习公式介绍</title></head><body>",
@@ -337,6 +337,7 @@ describe("worker api", () => {
       "fetch",
       vi
         .fn()
+        .mockRejectedValueOnce(new Error("reader unavailable"))
         .mockRejectedValueOnce(new Error("html unavailable"))
         .mockRejectedValueOnce(new Error("reader unavailable"))
         .mockResolvedValueOnce(
