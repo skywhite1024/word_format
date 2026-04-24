@@ -2,6 +2,7 @@ import type { Block, Mode, StructuredDoc } from "./types";
 
 const SENTENCE_ENDINGS = ["。", "！", "？", "；", "：", ".", "!", "?", ";", ":"];
 const THESIS_HINTS = ["摘要", "ABSTRACT", "目录", "参考文献", "关键词", "致谢"];
+const MD_HEADING_PREFIX = "@@MDHEADING@@";
 
 function stripCitationArtifacts(text: string): string {
   return text
@@ -19,8 +20,13 @@ export function sanitizeMarkdownText(rawText: string): string {
   const unified = rawText.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
   const withoutFences = unified.replace(/^```[\w-]*\s*$/gm, "");
 
-  const cleaned = withoutFences
-    .replace(/(^|\n)([ \t]{0,3})#{1,6}[ \t]+/g, "$1$2")
+  const withHeadingMarkers = withoutFences.replace(
+    /(^|\n)([ \t]{0,3})(#{1,6})[ \t]+/g,
+    (_match, prefix: string, indent: string, hashes: string) =>
+      `${prefix}${indent}${MD_HEADING_PREFIX}${Math.min(hashes.length, 3)} `,
+  );
+
+  const cleaned = withHeadingMarkers
     .replace(/(^|\n)[ \t]{0,3}>[ \t]?/g, "$1")
     .replace(/(^|\n)[ \t]*([-*_])[ \t]*\2[ \t]*\2(?:[ \t]*\2+)?[ \t]*(?=\n|$)/g, "$1")
     .replace(/^([ \t]*[-+*][ \t]+)/gm, "")
@@ -35,6 +41,19 @@ export function sanitizeMarkdownText(rawText: string): string {
     .replace(/[ \t]+\n/g, "\n");
 
   return stripCitationArtifacts(cleaned).trim();
+}
+
+function extractMarkdownHeadingLevel(paragraph: string): number | null {
+  const match = paragraph.trim().match(new RegExp(`^${MD_HEADING_PREFIX}(\\d)\\s+`));
+  if (!match) return null;
+
+  const level = Number.parseInt(match[1], 10);
+  if (!Number.isFinite(level) || level <= 0) return null;
+  return Math.min(level, 3);
+}
+
+function stripMarkdownHeadingMarker(text: string): string {
+  return text.trim().replace(new RegExp(`^${MD_HEADING_PREFIX}\\d\\s+`), "").trim();
 }
 
 function normalizeText(rawText: string): string {
@@ -80,6 +99,11 @@ function shouldDemoteHeading(text: string, level: number): boolean {
 }
 
 function headingLevel(paragraph: string): number | null {
+  const markdownLevel = extractMarkdownHeadingLevel(paragraph);
+  if (markdownLevel !== null) {
+    return markdownLevel;
+  }
+
   const p = paragraph.trim();
   if (!p) return null;
 
@@ -107,9 +131,16 @@ function headingLevel(paragraph: string): number | null {
 }
 
 function isLikelyTitle(paragraph: string): boolean {
-  const p = paragraph.trim();
+  const markdownLevel = extractMarkdownHeadingLevel(paragraph);
+  const p = markdownLevel !== null ? stripMarkdownHeadingMarker(paragraph) : paragraph.trim();
   if (!p || p.length > 45) return false;
-  if (headingLevel(p) !== null) return false;
+  if (markdownLevel !== null) {
+    if (/^(?:\d+[.)]|[（(]?\d+[）)]|[一二三四五六七八九十百]+、)\s*/.test(p)) {
+      return false;
+    }
+  } else if (headingLevel(p) !== null) {
+    return false;
+  }
   if (/^(?:\d+[.)]|[（(]\d+[）)]|[一二三四五六七八九十百]+、)\s*/.test(p)) {
     return false;
   }
@@ -246,12 +277,14 @@ function normalizeSubItemText(text: string): string {
 function sanitizeBlocks(blocks: Block[]): Block[] {
   return blocks
     .map((block) => {
-      const text = (block.text ?? "").trim();
+      const rawText = (block.text ?? "").trim();
+      const hadMarkdownHeading = extractMarkdownHeadingLevel(rawText) !== null;
+      const text = stripMarkdownHeadingMarker(rawText);
       if (!text) return null;
 
       if (block.type === "heading") {
         const level = block.level >= 1 && block.level <= 3 ? block.level : 1;
-        if (shouldDemoteHeading(text, level)) {
+        if (!hadMarkdownHeading && shouldDemoteHeading(text, level)) {
           return { type: "paragraph" as const, text: normalizeSubItemText(text), level: 0 };
         }
         return { type: "heading" as const, text, level };
@@ -302,7 +335,7 @@ export function analyzeText(rawText: string, mode: Mode = "auto"): StructuredDoc
   let title = "";
   let startIndex = 0;
   if (isLikelyTitle(paragraphs[0])) {
-    title = paragraphs[0];
+    title = stripMarkdownHeadingMarker(paragraphs[0]);
     startIndex = 1;
   }
 

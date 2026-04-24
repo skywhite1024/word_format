@@ -504,6 +504,30 @@ describe("docx-builder", () => {
     expect(docContent).not.toContain("<m:t>|</m:t>");
   });
 
+  it("should consume doubly escaped norm delimiters without leaving literal backslashes", async () => {
+    const structured: StructuredDoc = {
+      mode: "official",
+      title: "双重转义范数测试",
+      blocks: [
+        {
+          type: "paragraph",
+          level: 0,
+          text: "$$J(w)=\\frac{1}{n}\\sum_{i=1}^{n}(\\hat y_i-y_i)^2+\\lambda \\\\|w\\\\|_2^2$$",
+        },
+      ],
+      stats: { paragraphCount: 1, headingCount: 0, referenceCount: 0 },
+    };
+
+    const bytes = await buildDocx(structured);
+    const zip = await JSZip.loadAsync(bytes);
+    const documentXml = await zip.file("word/document.xml")?.async("string");
+    const docContent = documentXml ?? "";
+
+    expect(docContent).toContain("<m:t>‖</m:t>");
+    expect(docContent).not.toContain("<m:t>\\</m:t>");
+    expect(docContent).not.toContain("<m:t>|</m:t>");
+  });
+
   it("should normalize right arrow blocks into math arrows instead of literal command text", async () => {
     const structured: StructuredDoc = {
       mode: "official",
