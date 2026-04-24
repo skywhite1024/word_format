@@ -280,11 +280,11 @@ describe("worker api", () => {
     }
   });
 
-  it("should fallback to chatgpt html payload when reader content is unavailable", async () => {
+  it("should prefer chatgpt html payload over reader markdown when available", async () => {
     const originalFetch = globalThis.fetch;
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockRejectedValueOnce(new Error("reader unavailable")).mockResolvedValue(
+      vi.fn().mockResolvedValue(
         new Response(
           [
             "<html><head><title>机器学习公式介绍</title></head><body>",
@@ -331,22 +331,30 @@ describe("worker api", () => {
     }
   });
 
-  it("should return chatgpt import error after reader and html attempts fail", async () => {
+  it("should retry chatgpt share html after cloudflare challenge response", async () => {
     const originalFetch = globalThis.fetch;
     vi.stubGlobal(
       "fetch",
       vi
         .fn()
-        .mockRejectedValueOnce(new Error("reader unavailable"))
-        .mockRejectedValueOnce(new Error("html unavailable"))
-        .mockRejectedValueOnce(new Error("reader unavailable"))
+        .mockResolvedValueOnce(
+          new Response("challenge", {
+            status: 403,
+            headers: {
+              "cf-mitigated": "challenge",
+              "set-cookie": "__cf_bm=test-token; Path=/; Secure; HttpOnly",
+            },
+          }),
+        )
         .mockResolvedValueOnce(
           new Response(
             [
-              "<html><head><title>ChatGPT - 测试标题</title></head><body>",
-              '<script>window.__reactRouterContext={};window.__reactRouterContext.streamController={enqueue(){}};</script>',
+              "<html><head><title>机器学习公式介绍</title></head><body>",
+              "<h4>你说：</h4><div>详细介绍一下机器学习中的各种公式</div>",
+              "<h4>ChatGPT 说：</h4>",
               '<script nonce="test">',
-              'window.__reactRouterContext.streamController.enqueue("[{\\"_1\\":2},\\"pageTitle\\",\\"测试标题\\",\\"content_type\\",\\"text\\",\\"parts\\",[1],\\"请输出一个摘要\\",\\"content_type\\",\\"text\\",\\"parts\\",[2],\\"这是导入后的正文内容。\\"]");',
+              'window.__reactRouterContext={};window.__reactRouterContext.streamController={enqueue(){}};',
+              'window.__reactRouterContext.streamController.enqueue("[{\\"_1\\":2},\\"pageTitle\\",\\"机器学习公式介绍\\",\\"content_type\\",\\"text\\",\\"parts\\",[1],\\"下面这份可以当作“机器学习公式总览”。\\\\n\\\\n1. **模型形式 \\\\\\\\(f_\\\\theta\\\\\\\\) 不同**\\\\n\\\\n\\\\\\\\[\\\\n\\\\hat{y} = w^T x + b\\\\n\\\\\\\\]\\" ]");',
               "</script>",
               "</body></html>",
             ].join(""),
@@ -356,6 +364,48 @@ describe("worker api", () => {
             },
           ),
         ),
+    );
+
+    try {
+      const request = new Request("https://example.com/api/import/share", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          url: "https://chatgpt.com/share/demo-id",
+        }),
+      });
+
+      const response = await worker.fetch(request, {
+        ASSETS: { fetch: async () => new Response("not found", { status: 404 }) },
+      } as any);
+
+      expect(response.status).toBe(200);
+      const data = (await response.json()) as { source: string; title: string; text: string };
+      expect(data.source).toBe("chatgpt");
+      expect(data.title).toBe("机器学习公式介绍");
+      expect(data.text).toContain("## ChatGPT");
+      expect(data.text).toContain("\\hat{y} = w^T x + b");
+
+      const fetchCalls = vi.mocked(globalThis.fetch).mock.calls;
+      expect(fetchCalls).toHaveLength(2);
+      expect(fetchCalls[1]?.[1]).toMatchObject({
+        headers: expect.any(Headers),
+      });
+      const retryHeaders = fetchCalls[1]?.[1]?.headers as Headers;
+      expect(retryHeaders.get("cookie")).toContain("__cf_bm=test-token");
+    } finally {
+      vi.stubGlobal("fetch", originalFetch);
+    }
+  });
+
+  it("should return chatgpt import error after reader and html attempts fail", async () => {
+    const originalFetch = globalThis.fetch;
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockRejectedValueOnce(new Error("html unavailable"))
+        .mockRejectedValueOnce(new Error("reader unavailable")),
     );
 
     try {

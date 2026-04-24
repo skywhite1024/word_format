@@ -235,4 +235,19 @@ describe("analyzeText", () => {
       ),
     ).toBe(false);
   });
+
+  it("should not treat numbered inline-math list items as document title", () => {
+    const text = [
+      "1. **模型形式 (f_\\theta) 不同**",
+      "3. **正则项 (\\Omega) 不同**",
+    ].join("\n");
+
+    const result = analyzeText(text, "official");
+
+    expect(result.title).toBe("");
+    expect(result.blocks).toHaveLength(2);
+    expect(result.blocks.every((block) => block.type === "paragraph")).toBe(true);
+    expect(result.blocks[0]?.text).toContain("模型形式");
+    expect(result.blocks[1]?.text).toContain("正则项");
+  });
 });

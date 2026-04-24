@@ -110,6 +110,12 @@ function isLikelyTitle(paragraph: string): boolean {
   const p = paragraph.trim();
   if (!p || p.length > 45) return false;
   if (headingLevel(p) !== null) return false;
+  if (/^(?:\d+[.)]|[（(]\d+[）)]|[一二三四五六七八九十百]+、)\s*/.test(p)) {
+    return false;
+  }
+  if (/^(?:\$\$[\s\S]+\$\$|\\\[[\s\S]+\\\]|\[[\s\S]+])$/.test(p)) {
+    return false;
+  }
   return !SENTENCE_ENDINGS.some((end) => p.endsWith(end));
 }
 

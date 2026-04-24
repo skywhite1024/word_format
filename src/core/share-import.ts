@@ -9,15 +9,23 @@ export interface ImportedShareDocument {
   url: string;
 }
 
-const REQUEST_HEADERS = {
-  "User-Agent":
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36",
+const BROWSER_USER_AGENT =
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36";
+
+const BROWSER_REQUEST_HEADERS = {
+  "User-Agent": BROWSER_USER_AGENT,
   Accept:
     "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
   "Accept-Language": "en-US,en;q=0.9",
   "Sec-Ch-Ua": '"Chromium";v="118", "Not=A?Brand";v="24"',
   "Sec-Ch-Ua-Mobile": "?0",
   "Sec-Ch-Ua-Platform": '"Windows"',
+};
+
+const READER_REQUEST_HEADERS = {
+  "User-Agent": BROWSER_USER_AGENT,
+  Accept: "text/plain,text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8",
+  "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
 };
 
 const GEMINI_RPC_ID = "ujx1Bf";
@@ -128,7 +136,41 @@ function htmlToVisibleLines(html: string): string[] {
     .filter(Boolean);
 }
 
+function isPlausibleChatGptPromptCandidate(text: string): boolean {
+  const trimmed = text.trim();
+  if (!trimmed || trimmed.length < 4 || trimmed.length > 2_000) return false;
+  if (/^https?:\/\//i.test(trimmed)) return false;
+  if (/^(system|assistant|developer|tool|GLOBAL)$/i.test(trimmed)) return false;
+  return /[\u4e00-\u9fffA-Za-z]/.test(trimmed);
+}
+
+function extractChatGptPromptFromStream(html: string): string {
+  const patterns = [
+    /\\"((?:\\\\.|[^"\\]){4,2000})\\",\\"user\\",\{\}/g,
+    /"((?:\\.|[^"\\]){4,2000})","user",\{\}/g,
+  ];
+
+  const candidates: string[] = [];
+  for (const pattern of patterns) {
+    for (const match of html.matchAll(pattern)) {
+      const decoded = decodeJsonStringToken(match[1]).trim();
+      if (!isPlausibleChatGptPromptCandidate(decoded)) continue;
+      candidates.push(decoded);
+    }
+    if (candidates.length > 0) {
+      break;
+    }
+  }
+
+  return candidates.find((candidate) => /[\u4e00-\u9fff?.!？！]/.test(candidate)) ?? candidates[0] ?? "";
+}
+
 function extractChatGptPromptFromHtml(html: string): string {
+  const promptFromStream = extractChatGptPromptFromStream(html);
+  if (promptFromStream) {
+    return promptFromStream;
+  }
+
   const lines = htmlToVisibleLines(html);
   const promptIndex = lines.findIndex((line) => /^(你说[:：]?|You said:?)/i.test(line));
   if (promptIndex < 0) return "";
@@ -275,15 +317,22 @@ function parseGeminiHtmlFallback(html: string, shareUrl: string): { title: strin
 }
 
 function extractChatGptTitle(html: string): string {
+  const embeddedMatches = [
+    html.match(/\\"pageTitle\\",\\"((?:\\\\.|[^"\\])*)\\"/),
+    html.match(/"pageTitle","((?:\\.|[^"\\])*)"/),
+  ];
+  for (const match of embeddedMatches) {
+    if (!match?.[1]) continue;
+    const title = decodeJsonStringToken(match[1]).trim();
+    if (title) {
+      return title.replace(/^ChatGPT\s*-\s*/i, "").trim();
+    }
+  }
+
   const pageTitleMatch = html.match(/<title>([^<]+)<\/title>/i);
   const pageTitle = pageTitleMatch?.[1]?.trim() ?? "";
   if (pageTitle && !/^ChatGPT$/i.test(pageTitle)) {
     return pageTitle.replace(/^ChatGPT\s*-\s*/i, "").trim();
-  }
-
-  const escapedMatch = html.match(/\\"pageTitle\\",\\"((?:\\\\.|[^"\\])*)\\"/);
-  if (escapedMatch?.[1]) {
-    return decodeJsonStringToken(escapedMatch[1]).trim();
   }
 
   const titleMatch = html.match(/<title>ChatGPT\s*-\s*([^<]+)<\/title>/i);
@@ -317,7 +366,7 @@ function extractGeminiBuildLabel(html: string): string {
 }
 
 async function fetchGeminiBuildLabel(): Promise<string> {
-  const html = await fetchText("https://gemini.google.com/");
+  const html = await fetchText("https://gemini.google.com/", {}, { allowChallengeRetry: true });
   const buildLabel = extractGeminiBuildLabel(html);
   if (!buildLabel) {
     throw new Error("Gemini 构建标识抓取失败。");
@@ -466,7 +515,7 @@ async function fetchGeminiRpcMarkdown(url: URL, buildLabel: string): Promise<{ t
       Referer: "https://gemini.google.com/",
     },
     body: createGeminiRpcBody(shareId),
-  });
+  }, { allowChallengeRetry: true });
 
   const parsed = parseGeminiRpcConversation(responseText);
   if (!parsed.answer) return null;
@@ -503,14 +552,94 @@ function detectShareSource(url: URL): ShareSource {
   throw new Error("当前仅支持 ChatGPT 与 Gemini 的公开分享链接。");
 }
 
-async function fetchText(url: string, init: RequestInit = {}): Promise<string> {
-  const response = await fetch(url, {
+type FetchProfile = "browser" | "reader";
+
+interface FetchTextOptions {
+  allowChallengeRetry?: boolean;
+  profile?: FetchProfile;
+}
+
+function resolveBaseHeaders(profile: FetchProfile): Record<string, string> {
+  return profile === "reader" ? READER_REQUEST_HEADERS : BROWSER_REQUEST_HEADERS;
+}
+
+function mergeHeaders(
+  baseHeaders: Record<string, string>,
+  extraHeaders?: HeadersInit,
+  cookieHeader?: string,
+): Headers {
+  const headers = new Headers(baseHeaders);
+  if (extraHeaders) {
+    new Headers(extraHeaders).forEach((value, key) => headers.set(key, value));
+  }
+  if (cookieHeader) {
+    headers.set("Cookie", cookieHeader);
+  }
+  return headers;
+}
+
+function splitCombinedSetCookieHeader(rawHeader: string): string[] {
+  return rawHeader
+    .split(/,(?=\s*[^;,\s]+=)/g)
+    .map((value) => value.trim())
+    .filter(Boolean);
+}
+
+function getSetCookieValues(headers: Headers): string[] {
+  const extendedHeaders = headers as Headers & {
+    getAll?: (name: string) => string[];
+    getSetCookie?: () => string[];
+  };
+
+  if (typeof extendedHeaders.getSetCookie === "function") {
+    return extendedHeaders.getSetCookie().filter(Boolean);
+  }
+  if (typeof extendedHeaders.getAll === "function") {
+    try {
+      return extendedHeaders.getAll("set-cookie").filter(Boolean);
+    } catch {
+      // ignore unsupported getAll implementations
+    }
+  }
+
+  const combined = headers.get("set-cookie");
+  return combined ? splitCombinedSetCookieHeader(combined) : [];
+}
+
+function extractCookieHeader(headers: Headers): string {
+  return getSetCookieValues(headers)
+    .map((value) => value.split(";")[0]?.trim() ?? "")
+    .filter(Boolean)
+    .join("; ");
+}
+
+function isCloudflareChallengeResponse(response: Response): boolean {
+  return response.status === 403 && /challenge/i.test(response.headers.get("cf-mitigated") ?? "");
+}
+
+async function fetchText(
+  url: string,
+  init: RequestInit = {},
+  options: FetchTextOptions = {},
+): Promise<string> {
+  const profile = options.profile ?? "browser";
+  const baseHeaders = resolveBaseHeaders(profile);
+  const requestInit: RequestInit = {
     ...init,
-    headers: {
-      ...REQUEST_HEADERS,
-      ...((init.headers as Record<string, string> | undefined) ?? {}),
-    },
-  });
+    headers: mergeHeaders(baseHeaders, init.headers),
+  };
+
+  let response = await fetch(url, requestInit);
+  if (!response.ok && options.allowChallengeRetry && isCloudflareChallengeResponse(response)) {
+    const cookieHeader = extractCookieHeader(response.headers);
+    if (cookieHeader) {
+      response = await fetch(url, {
+        ...init,
+        headers: mergeHeaders(baseHeaders, init.headers, cookieHeader),
+      });
+    }
+  }
+
   if (!response.ok) {
     throw new Error(`抓取分享页失败(${response.status})。`);
   }
@@ -519,6 +648,10 @@ async function fetchText(url: string, init: RequestInit = {}): Promise<string> {
 
 async function importGeminiShare(url: URL): Promise<ImportedShareDocument> {
   const failures: string[] = [];
+  const pushFailure = (step: string, error?: unknown) => {
+    const detail = error instanceof Error ? error.message : "";
+    failures.push(detail ? `${step}:${detail}` : step);
+  };
 
   try {
     const buildLabel = await fetchGeminiBuildLabel();
@@ -532,13 +665,13 @@ async function importGeminiShare(url: URL): Promise<ImportedShareDocument> {
       };
     }
     failures.push("rpc-empty");
-  } catch {
-    failures.push("rpc-fetch");
+  } catch (error) {
+    pushFailure("rpc-fetch", error);
     // Gemini 公开分享页的主站抓取在不同网络环境下表现不稳定，继续尝试阅读代理。
   }
 
   try {
-    const readerOutput = await fetchText(`https://r.jina.ai/http://${url.href}`);
+    const readerOutput = await fetchText(`https://r.jina.ai/http://${url.href}`, {}, { profile: "reader" });
     const markdown = parseReaderMarkdown(readerOutput);
     const parsed = cleanGeminiReaderMarkdown(markdown, url.href);
     if (parsed.text && !isLikelyInvalidShareBody(parsed.text)) {
@@ -550,13 +683,13 @@ async function importGeminiShare(url: URL): Promise<ImportedShareDocument> {
       };
     }
     failures.push("reader-invalid");
-  } catch {
-    failures.push("reader-fetch");
+  } catch (error) {
+    pushFailure("reader-fetch", error);
     // Gemini 公开分享页有时会触发代理抓取失败，继续使用 HTML 回退。
   }
 
   try {
-    const html = await fetchText(url.href);
+    const html = await fetchText(url.href, {}, { allowChallengeRetry: true });
     const parsed = parseGeminiHtmlFallback(html, url.href);
     if (parsed.text && !isLikelyInvalidShareBody(parsed.text)) {
       return {
@@ -567,8 +700,8 @@ async function importGeminiShare(url: URL): Promise<ImportedShareDocument> {
       };
     }
     failures.push("html-invalid");
-  } catch {
-    failures.push("html-fetch");
+  } catch (error) {
+    pushFailure("html-fetch", error);
     // direct html fallback
   }
 
@@ -578,27 +711,13 @@ async function importGeminiShare(url: URL): Promise<ImportedShareDocument> {
 async function importChatGptShare(url: URL): Promise<ImportedShareDocument> {
   let readerFallback: ImportedShareDocument | null = null;
   const failures: string[] = [];
+  const pushFailure = (step: string, error?: unknown) => {
+    const detail = error instanceof Error ? error.message : "";
+    failures.push(detail ? `${step}:${detail}` : step);
+  };
 
   try {
-    const readerOutput = await fetchText(`https://r.jina.ai/http://${url.href}`);
-    const markdown = parseReaderMarkdown(readerOutput);
-    const parsed = cleanChatGptReaderMarkdown(markdown, url.href, extractReaderTitle(readerOutput));
-    if (parsed.text && !isLikelyInvalidShareBody(parsed.text)) {
-      readerFallback = {
-        source: "chatgpt",
-        title: parsed.title,
-        text: parsed.text,
-        url: url.href,
-      };
-    }
-    failures.push("reader-invalid");
-  } catch {
-    failures.push("reader-fetch");
-    // reader first fallback
-  }
-
-  try {
-    const html = await fetchText(url.href);
+    const html = await fetchText(url.href, {}, { allowChallengeRetry: true });
     const title = extractChatGptTitle(html);
     const parts = extractChatGptMessageParts(html);
     const prompt = extractChatGptPromptFromHtml(html);
@@ -613,9 +732,28 @@ async function importChatGptShare(url: URL): Promise<ImportedShareDocument> {
       };
     }
     failures.push("html-invalid");
-  } catch {
-    failures.push("html-fetch");
+  } catch (error) {
+    pushFailure("html-fetch", error);
     // ChatGPT 分享页直连在部分环境会被挑战页或证书代理影响，失败后继续回退。
+  }
+
+  try {
+    const readerOutput = await fetchText(`https://r.jina.ai/http://${url.href}`, {}, { profile: "reader" });
+    const markdown = parseReaderMarkdown(readerOutput);
+    const parsed = cleanChatGptReaderMarkdown(markdown, url.href, extractReaderTitle(readerOutput));
+    if (parsed.text && !isLikelyInvalidShareBody(parsed.text)) {
+      readerFallback = {
+        source: "chatgpt",
+        title: parsed.title,
+        text: parsed.text,
+        url: url.href,
+      };
+    } else {
+      failures.push("reader-invalid");
+    }
+  } catch (error) {
+    pushFailure("reader-fetch", error);
+    // reader fallback
   }
 
   if (readerFallback) {
