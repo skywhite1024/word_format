@@ -744,6 +744,24 @@ async function importGeminiShare(url: URL): Promise<ImportedShareDocument> {
   }
 
   try {
+    const proxiedReaderOutput = await fetchTextViaCodeTabs(`https://r.jina.ai/http://${normalizedUrl.href}`);
+    const markdown = parseReaderMarkdown(proxiedReaderOutput);
+    const parsed = cleanGeminiReaderMarkdown(markdown, normalizedUrl.href);
+    if (parsed.text && !isLikelyInvalidShareBody(parsed.text)) {
+      return {
+        source: "gemini",
+        title: parsed.title,
+        text: parsed.text,
+        url: url.href,
+      };
+    }
+    failures.push("codetabs-reader-invalid");
+  } catch (error) {
+    pushFailure("codetabs-reader-fetch", error);
+    // codetabs -> jina fallback
+  }
+
+  try {
     const html = await fetchText(normalizedUrl.href, {}, { allowChallengeRetry: true });
     const parsed = parseGeminiHtmlFallback(html, normalizedUrl.href);
     if (parsed.text && !isLikelyInvalidShareBody(parsed.text)) {

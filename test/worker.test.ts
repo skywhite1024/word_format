@@ -156,6 +156,72 @@ describe("worker api", () => {
     }
   });
 
+  it("should import gemini share content from codetabs reader fallback", async () => {
+    const originalFetch = globalThis.fetch;
+    const readerContent = [
+      "Title: Gemini - direct access to Google AI",
+      "",
+      "URL Source: https://bard.google.com/share/demo",
+      "",
+      "Markdown Content:",
+      "# **高三三角函数常用值与技巧**",
+      "",
+      "[https://bard.google.com/share/demo](https://bard.google.com/share/demo)",
+      "",
+      "Created with Pro Published today",
+      "",
+      "You said",
+      "用表格展示高三三角函数常用值",
+      "",
+      "这是整理后的正文。",
+    ].join("\n");
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockRejectedValueOnce(new Error("bard root unavailable"))
+        .mockResolvedValueOnce(
+          new Response("<html><body>missing build label</body></html>", {
+            status: 200,
+            headers: { "Content-Type": "text/html; charset=utf-8" },
+          }),
+        )
+        .mockRejectedValueOnce(new Error("reader unavailable"))
+        .mockResolvedValueOnce(
+          new Response(readerContent, {
+            status: 200,
+            headers: { "Content-Type": "text/plain; charset=utf-8" },
+          }),
+        ),
+    );
+
+    try {
+      const request = new Request("https://example.com/api/import/share", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          url: "https://gemini.google.com/share/demo",
+        }),
+      });
+
+      const response = await worker.fetch(request, {
+        ASSETS: { fetch: async () => new Response("not found", { status: 404 }) },
+      } as any);
+
+      expect(response.status).toBe(200);
+      const data = (await response.json()) as { source: string; title: string; text: string };
+      expect(data.source).toBe("gemini");
+      expect(data.title).toBe("高三三角函数常用值与技巧");
+      expect(data.text).toContain("## 你说");
+      expect(data.text).toContain("这是整理后的正文。");
+      expect(vi.mocked(globalThis.fetch).mock.calls[3]?.[0]).toBe(
+        "https://api.codetabs.com/v1/proxy?quest=https%3A%2F%2Fr.jina.ai%2Fhttp%3A%2F%2Fhttps%3A%2F%2Fbard.google.com%2Fshare%2Fdemo",
+      );
+    } finally {
+      vi.stubGlobal("fetch", originalFetch);
+    }
+  });
+
   it("should import gemini share content from bard rpc before reader fallback", async () => {
     const originalFetch = globalThis.fetch;
     const rpcPayload = JSON.stringify([
