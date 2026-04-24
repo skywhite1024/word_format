@@ -222,6 +222,66 @@ describe("worker api", () => {
     }
   });
 
+  it("should skip rate-limited gemini reader output and normalize fallback text", async () => {
+    const originalFetch = globalThis.fetch;
+    const rateLimitedReader = [
+      "Title: Gemini - direct access to Google AI",
+      "",
+      "URL Source: https://bard.google.com/share/demo",
+      "",
+      "Markdown Content:",
+      '{"code":429,"data":null,"message":"Per IP rate limit exceeded"}',
+    ].join("\n");
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockRejectedValueOnce(new Error("bard root unavailable"))
+        .mockResolvedValueOnce(
+          new Response("<html><body>missing build label</body></html>", {
+            status: 200,
+            headers: { "Content-Type": "text/html; charset=utf-8" },
+          }),
+        )
+        .mockResolvedValueOnce(
+          new Response(rateLimitedReader, {
+            status: 200,
+            headers: { "Content-Type": "text/plain; charset=utf-8" },
+          }),
+        )
+        .mockRejectedValueOnce(new Error("codetabs reader unavailable"))
+        .mockResolvedValueOnce(
+          new Response("<html><body><main><p>机器学习公式概览</p><p>损失函数与优化方法。</p></main></body></html>", {
+            status: 200,
+            headers: { "Content-Type": "text/html; charset=utf-8" },
+          }),
+        ),
+    );
+
+    try {
+      const request = new Request("https://example.com/api/import/share", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          url: "https://gemini.google.com/share/demo",
+        }),
+      });
+
+      const response = await worker.fetch(request, {
+        ASSETS: { fetch: async () => new Response("not found", { status: 404 }) },
+      } as any);
+
+      expect(response.status).toBe(200);
+      const data = (await response.json()) as { source: string; title: string; text: string };
+      expect(data.source).toBe("gemini");
+      expect(data.text).not.toContain("Per IP rate limit exceeded");
+      expect(data.text).toContain("# 机器学习公式概览");
+      expect(data.text).toContain("损失函数与优化方法。");
+    } finally {
+      vi.stubGlobal("fetch", originalFetch);
+    }
+  });
+
   it("should import gemini share content from bard rpc before reader fallback", async () => {
     const originalFetch = globalThis.fetch;
     const rpcPayload = JSON.stringify([

@@ -314,6 +314,8 @@ function isLikelyInvalidShareBody(text: string): boolean {
   if (!trimmed) return true;
   if (trimmed.length < 24) return true;
   if (/^Too many redirects\./i.test(trimmed)) return true;
+  if (/^\s*\{\s*"code"\s*:\s*429\b/.test(trimmed)) return true;
+  if (/Per IP rate limit exceeded/i.test(trimmed)) return true;
 
   const compact = trimmed.replace(/\s+/g, " ");
   if (/www\.google\.com\/sorry\/index/i.test(compact)) return true;
@@ -326,6 +328,22 @@ function isLikelyInvalidShareBody(text: string): boolean {
   }
 
   return false;
+}
+
+function finalizeGeminiImportedText(title: string, text: string): { title: string; text: string } {
+  const trimmed = text.trim();
+  if (!trimmed) {
+    return { title, text: trimmed };
+  }
+
+  if (/^#\s+/m.test(trimmed) || /^##\s+(?:Gemini|你说)/m.test(trimmed)) {
+    return { title, text: trimmed };
+  }
+
+  return {
+    title,
+    text: normalizeImportText(title, [`## Gemini\n${trimmed}`]),
+  };
 }
 
 function cleanGeminiReaderMarkdown(
@@ -791,10 +809,11 @@ async function importGeminiShare(url: URL): Promise<ImportedShareDocument> {
     const buildLabel = await fetchGeminiBuildLabelForShare(normalizedUrl);
     const rpcParsed = await fetchGeminiRpcMarkdown(normalizedUrl, buildLabel, "https://bard.google.com");
     if (rpcParsed?.text) {
+      const finalized = finalizeGeminiImportedText(rpcParsed.title, rpcParsed.text);
       return {
         source: "gemini",
-        title: rpcParsed.title,
-        text: rpcParsed.text,
+        title: finalized.title,
+        text: finalized.text,
         url: url.href,
       };
     }
@@ -809,10 +828,11 @@ async function importGeminiShare(url: URL): Promise<ImportedShareDocument> {
     const markdown = parseReaderMarkdown(readerOutput);
     const parsed = cleanGeminiReaderMarkdown(markdown, normalizedUrl.href, extractReaderTitle(readerOutput));
     if (parsed.text && !isLikelyInvalidShareBody(parsed.text)) {
+      const finalized = finalizeGeminiImportedText(parsed.title, parsed.text);
       return {
         source: "gemini",
-        title: parsed.title,
-        text: parsed.text,
+        title: finalized.title,
+        text: finalized.text,
         url: url.href,
       };
     }
@@ -827,10 +847,11 @@ async function importGeminiShare(url: URL): Promise<ImportedShareDocument> {
     const markdown = parseReaderMarkdown(proxiedReaderOutput);
     const parsed = cleanGeminiReaderMarkdown(markdown, normalizedUrl.href, extractReaderTitle(proxiedReaderOutput));
     if (parsed.text && !isLikelyInvalidShareBody(parsed.text)) {
+      const finalized = finalizeGeminiImportedText(parsed.title, parsed.text);
       return {
         source: "gemini",
-        title: parsed.title,
-        text: parsed.text,
+        title: finalized.title,
+        text: finalized.text,
         url: url.href,
       };
     }
@@ -844,10 +865,11 @@ async function importGeminiShare(url: URL): Promise<ImportedShareDocument> {
     const html = await fetchText(normalizedUrl.href, {}, { allowChallengeRetry: true });
     const parsed = parseGeminiHtmlFallback(html, normalizedUrl.href);
     if (parsed.text && !isLikelyInvalidShareBody(parsed.text)) {
+      const finalized = finalizeGeminiImportedText(parsed.title, parsed.text);
       return {
         source: "gemini",
-        title: parsed.title,
-        text: parsed.text,
+        title: finalized.title,
+        text: finalized.text,
         url: url.href,
       };
     }
