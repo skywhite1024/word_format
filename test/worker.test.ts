@@ -167,19 +167,19 @@ describe("worker api", () => {
       expect(data.title).toBe("高三三角函数常用值与技巧");
       expect(data.text).toContain("## 你说");
       expect(data.text).toContain("这是整理后的正文。");
-      expect(vi.mocked(globalThis.fetch).mock.calls[0]?.[0]).toBe("https://gemini.google.com/");
+      expect(vi.mocked(globalThis.fetch).mock.calls[0]?.[0]).toBe("https://bard.google.com/");
       expect(vi.mocked(globalThis.fetch).mock.calls[1]?.[0]).toBe(
-        "https://api.codetabs.com/v1/proxy?quest=https%3A%2F%2Fgemini.google.com%2Fshare%2Fdemo",
-      );
-      expect(vi.mocked(globalThis.fetch).mock.calls[2]?.[0]).toContain(
-        "r.jina.ai/http://https://gemini.google.com/share/demo",
-      );
-      expect(vi.mocked(globalThis.fetch).mock.calls[3]?.[0]).toBe("https://bard.google.com/");
-      expect(vi.mocked(globalThis.fetch).mock.calls[4]?.[0]).toBe(
         "https://api.codetabs.com/v1/proxy?quest=https%3A%2F%2Fbard.google.com%2Fshare%2Fdemo",
       );
-      expect(vi.mocked(globalThis.fetch).mock.calls[5]?.[0]).toContain(
+      expect(vi.mocked(globalThis.fetch).mock.calls[2]?.[0]).toContain(
         "r.jina.ai/http://https://bard.google.com/share/demo",
+      );
+      expect(vi.mocked(globalThis.fetch).mock.calls[3]?.[0]).toBe("https://gemini.google.com/");
+      expect(vi.mocked(globalThis.fetch).mock.calls[4]?.[0]).toBe(
+        "https://api.codetabs.com/v1/proxy?quest=https%3A%2F%2Fgemini.google.com%2Fshare%2Fdemo",
+      );
+      expect(vi.mocked(globalThis.fetch).mock.calls[5]?.[0]).toContain(
+        "r.jina.ai/http://https://gemini.google.com/share/demo",
       );
       expect(vi.mocked(globalThis.fetch).mock.calls[6]?.[0]).toContain(
         "r.jina.ai/http://https://bard.google.com/share/demo",
@@ -434,9 +434,9 @@ describe("worker api", () => {
       const structured = analyzeText(data.text, "auto");
       expect(structured.blocks.some((block) => block.text === "$$y = w^T x + b$$")).toBe(true);
       expect(structured.blocks.some((block) => block.text.startsWith("$$J(w, b) = \\frac{1}{2m}"))).toBe(true);
-      expect(vi.mocked(globalThis.fetch).mock.calls[0]?.[0]).toBe("https://gemini.google.com/");
+      expect(vi.mocked(globalThis.fetch).mock.calls[0]?.[0]).toBe("https://bard.google.com/");
       expect(vi.mocked(globalThis.fetch).mock.calls[1]?.[0]).toContain(
-        "https://gemini.google.com/_/BardChatUi/data/batchexecute",
+        "https://bard.google.com/_/BardChatUi/data/batchexecute",
       );
     } finally {
       vi.stubGlobal("fetch", originalFetch);

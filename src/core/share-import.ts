@@ -664,6 +664,7 @@ async function fetchGeminiRpcMarkdown(
     `&hl=zh-CN&_reqid=${Date.now() % 1000000}&rt=c`;
   const responseText = await fetchText(rpcUrl, {
     method: "POST",
+    redirect: "manual",
     headers: {
       Accept: "*/*",
       "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
@@ -799,7 +800,7 @@ function buildGeminiShareUrl(url: URL, baseOrigin: string): URL {
 
 function getGeminiRpcOrigins(url: URL): string[] {
   const primary = `https://${url.hostname}`;
-  const origins = [primary, "https://gemini.google.com", "https://bard.google.com"];
+  const origins = ["https://bard.google.com", primary, "https://gemini.google.com"];
   return [...new Set(origins)];
 }
 
