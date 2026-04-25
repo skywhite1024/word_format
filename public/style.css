@@ -395,11 +395,50 @@ button:disabled {
   font-size: 17px;
   text-align: center;
   text-indent: 0;
+  line-height: 1.9;
 }
 
 .preview-body .equation-no {
   color: var(--muted);
   font-size: 14px;
+}
+
+.preview-body .equation-formula {
+  display: inline-block;
+  white-space: normal;
+  word-break: keep-all;
+}
+
+.preview-body .equation-formula sub,
+.preview-body .equation-formula sup {
+  font-size: 0.68em;
+  line-height: 0;
+}
+
+.preview-body .math-frac {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  margin: 0 0.16em;
+  vertical-align: middle;
+  line-height: 1.08;
+}
+
+.preview-body .math-frac > span:first-child {
+  min-width: 1.1em;
+  padding: 0 0.18em 0.12em;
+  border-bottom: 1px solid currentColor;
+}
+
+.preview-body .math-frac > span:last-child {
+  padding: 0.12em 0.18em 0;
+}
+
+.preview-body .math-radical {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.06em;
 }
 
 .preview-body table {

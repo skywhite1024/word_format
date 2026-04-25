@@ -254,6 +254,194 @@ function isLikelyEquation(text) {
   return hasMathKeyword || hasMathCommand || hasScriptContext || (hasEquationOperator && hasMathContext);
 }
 
+const PREVIEW_COMMAND_TEXT = {
+  alpha: "α",
+  beta: "β",
+  gamma: "γ",
+  delta: "δ",
+  Delta: "Δ",
+  epsilon: "ε",
+  eta: "η",
+  lambda: "λ",
+  mu: "μ",
+  Omega: "Ω",
+  omega: "ω",
+  phi: "φ",
+  pi: "π",
+  sigma: "σ",
+  theta: "θ",
+  xi: "ξ",
+  infty: "∞",
+  partial: "∂",
+  nabla: "∇",
+  cdot: "·",
+  times: "×",
+  le: "≤",
+  leq: "≤",
+  ge: "≥",
+  geq: "≥",
+  neq: "≠",
+  mid: "|",
+  rightarrow: "→",
+  Rightarrow: "⇒",
+  to: "→",
+  sum: "∑",
+  int: "∫",
+};
+
+const PREVIEW_IGNORED_COMMANDS = new Set(["left", "right", "big", "Big", "bigg", "Bigg", "quad", "qquad"]);
+
+function readPreviewGroup(text, start, open = "{", close = "}") {
+  if (text[start] !== open) return null;
+  let depth = 0;
+  for (let cursor = start; cursor < text.length; cursor += 1) {
+    const ch = text[cursor];
+    if (ch === open) depth += 1;
+    if (ch === close) {
+      depth -= 1;
+      if (depth === 0) {
+        return {
+          value: text.slice(start + 1, cursor),
+          end: cursor + 1,
+        };
+      }
+    }
+  }
+  return { value: text.slice(start + 1), end: text.length };
+}
+
+function readPreviewScriptValue(text, start) {
+  let cursor = start;
+  while (cursor < text.length && /\s/.test(text[cursor])) cursor += 1;
+
+  const grouped = readPreviewGroup(text, cursor);
+  if (grouped) return grouped;
+
+  if (text[cursor] === "\\") {
+    const command = text.slice(cursor + 1).match(/^[A-Za-z]+/);
+    if (command) {
+      return { value: text.slice(cursor, cursor + 1 + command[0].length), end: cursor + 1 + command[0].length };
+    }
+  }
+
+  let value = "";
+  while (
+    cursor < text.length &&
+    !/[\s+\-*/=<>≤≥×÷_|()[\]{},;]/.test(text[cursor]) &&
+    text[cursor] !== "^"
+  ) {
+    value += text[cursor];
+    cursor += 1;
+  }
+  return { value: value || text[start] || "", end: cursor > start ? cursor : start + 1 };
+}
+
+function normalizeEquationPreviewSource(text) {
+  return text
+    .replace(/\\\\(?=[()[\]A-Za-z|])/g, "\\")
+    .replace(/\\lVert|\\rVert|\\Vert/g, "||")
+    .replace(/\\\|/g, "||")
+    .replace(/\\\[/g, "[")
+    .replace(/\\\]/g, "]")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function renderEquationExpression(rawText) {
+  const text = normalizeEquationPreviewSource(rawText);
+  let output = "";
+  let cursor = 0;
+
+  while (cursor < text.length) {
+    const ch = text[cursor];
+
+    if (ch === "_" || ch === "^") {
+      const script = readPreviewScriptValue(text, cursor + 1);
+      const tag = ch === "_" ? "sub" : "sup";
+      output += `<${tag}>${renderEquationExpression(script.value)}</${tag}>`;
+      cursor = script.end;
+      continue;
+    }
+
+    if (ch === "\\") {
+      const next = text[cursor + 1] || "";
+      if (!/[A-Za-z]/.test(next)) {
+        output += /[,;:]/.test(next) ? " " : next === "!" ? "" : escapeHtml(next);
+        cursor += 2;
+        continue;
+      }
+
+      const commandMatch = text.slice(cursor + 1).match(/^[A-Za-z]+/);
+      const command = commandMatch?.[0] || "";
+      const commandEnd = cursor + 1 + command.length;
+
+      if (command === "frac") {
+        const numerator = readPreviewGroup(text, commandEnd);
+        const denominator = numerator ? readPreviewGroup(text, numerator.end) : null;
+        if (numerator && denominator) {
+          output += `<span class="math-frac"><span>${renderEquationExpression(numerator.value)}</span><span>${renderEquationExpression(
+            denominator.value,
+          )}</span></span>`;
+          cursor = denominator.end;
+          continue;
+        }
+      }
+
+      if (command === "sqrt") {
+        const body = readPreviewGroup(text, commandEnd);
+        if (body) {
+          output += `<span class="math-radical">√<span>${renderEquationExpression(body.value)}</span></span>`;
+          cursor = body.end;
+          continue;
+        }
+      }
+
+      if (command === "hat" || command === "bar" || command === "tilde") {
+        const body = readPreviewGroup(text, commandEnd);
+        if (body) {
+          const accent = command === "hat" ? "̂" : command === "bar" ? "̄" : "̃";
+          output += `${renderEquationExpression(body.value)}${accent}`;
+          cursor = body.end;
+          continue;
+        }
+      }
+
+      if (["text", "mathrm", "mathbf", "mathbb", "mathcal", "operatorname"].includes(command)) {
+        const body = readPreviewGroup(text, commandEnd);
+        if (body) {
+          output += renderEquationExpression(body.value);
+          cursor = body.end;
+          continue;
+        }
+      }
+
+      if (PREVIEW_IGNORED_COMMANDS.has(command)) {
+        cursor = commandEnd;
+        continue;
+      }
+
+      if (command === "min" || command === "max" || command === "argmin" || command === "argmax") {
+        output += escapeHtml(command);
+        cursor = commandEnd;
+        continue;
+      }
+
+      output += escapeHtml(PREVIEW_COMMAND_TEXT[command] || command);
+      cursor = commandEnd;
+      continue;
+    }
+
+    output += escapeHtml(ch);
+    cursor += 1;
+  }
+
+  return output;
+}
+
+function formatEquationContent(text) {
+  return `<span class="equation-formula">${renderEquationExpression(text)}</span>`;
+}
+
 function formatInlineContent(text) {
   return escapeHtml(text)
     .replace(/\\theta/g, "θ")
@@ -356,7 +544,7 @@ function renderStructuredPreview(structured) {
       const equationNo = equationIndexByKey.get(key);
       pieces.push(`
         <div class="equation-block">
-          <div class="equation-text">${formatInlineContent(equationText)}</div>
+          <div class="equation-text">${formatEquationContent(equationText)}</div>
           <div class="equation-no">(${equationNo})</div>
         </div>
       `);
@@ -601,6 +789,38 @@ function exportPdf() {
           .equation-text {
             text-align: center;
             font-family: "Cambria Math", "Times New Roman", serif;
+          }
+          .equation-formula {
+            display: inline-block;
+            white-space: normal;
+            word-break: keep-all;
+          }
+          .equation-formula sub,
+          .equation-formula sup {
+            font-size: 0.68em;
+            line-height: 0;
+          }
+          .math-frac {
+            display: inline-flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            margin: 0 0.16em;
+            vertical-align: middle;
+            line-height: 1.08;
+          }
+          .math-frac > span:first-child {
+            min-width: 1.1em;
+            padding: 0 0.18em 0.12em;
+            border-bottom: 1px solid currentColor;
+          }
+          .math-frac > span:last-child {
+            padding: 0.12em 0.18em 0;
+          }
+          .math-radical {
+            display: inline-flex;
+            align-items: baseline;
+            gap: 0.06em;
           }
           table {
             width: 100%;

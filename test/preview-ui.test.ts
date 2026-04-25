@@ -1,0 +1,77 @@
+import fs from "node:fs";
+import vm from "node:vm";
+import { describe, expect, it } from "vitest";
+
+function createElementStub() {
+  return {
+    value: "",
+    checked: false,
+    disabled: false,
+    innerHTML: "",
+    textContent: "",
+    addEventListener() {},
+    focus() {},
+    click() {},
+  };
+}
+
+function loadPreviewContext(): { renderStructuredPreview: (structured: unknown) => string } {
+  const code = fs.readFileSync(new URL("../public/app.js", import.meta.url), "utf8");
+  const elements = new Map<string, ReturnType<typeof createElementStub>>();
+  const context = vm.createContext({
+    console,
+    setTimeout,
+    clearTimeout,
+    AbortController,
+    fetch: async () => ({ ok: false, headers: { get: () => "" }, json: async () => ({}) }),
+    URL: { createObjectURL: () => "blob:test", revokeObjectURL() {} },
+    document: {
+      getElementById(id: string) {
+        if (!elements.has(id)) {
+          elements.set(id, createElementStub());
+        }
+        return elements.get(id);
+      },
+      createElement: createElementStub,
+    },
+    window: { open: () => null },
+  });
+
+  vm.runInContext(code, context);
+  return context as unknown as { renderStructuredPreview: (structured: unknown) => string };
+}
+
+describe("preview ui", () => {
+  it("should render equation blocks as formatted math preview instead of raw latex", () => {
+    const { renderStructuredPreview } = loadPreviewContext();
+    const html = renderStructuredPreview({
+      mode: "official",
+      title: "机器学习公式介绍",
+      stats: { paragraphCount: 2, headingCount: 1, referenceCount: 0 },
+      blocks: [
+        { type: "heading", level: 1, text: "1. 机器学习里最核心的总公式" },
+        {
+          type: "paragraph",
+          level: 0,
+          text: String.raw`$$\min_{\theta} \; J(\theta)=\frac{1}{n}\sum_{i=1}^{n} L\big(f_\theta(x_i),y_i\big)+\lambda\,\Omega(\theta)$$`,
+        },
+        {
+          type: "paragraph",
+          level: 0,
+          text: "[\n\\text{数据} \\rightarrow \\text{模型} \\rightarrow \\text{评估}\n]",
+        },
+      ],
+    });
+
+    expect(html).toContain('class="math-frac"');
+    expect(html).toContain("∑");
+    expect(html).toContain("θ");
+    expect(html).toContain("Ω");
+    expect(html).toContain("→");
+    expect(html).not.toContain("\\frac");
+    expect(html).not.toContain("\\sum");
+    expect(html).not.toContain("\\Omega");
+    expect(html).not.toContain("rightarrow");
+    expect(html).not.toContain("ightarrow");
+  });
+});
