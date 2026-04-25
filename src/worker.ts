@@ -30,6 +30,7 @@ interface ShareUrlPayload {
 }
 
 const SHARE_IMPORT_CACHE_MAX_AGE_SECONDS = 86_400;
+const SHARE_IMPORT_CACHE_VERSION = "v2";
 
 function jsonResponse(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
@@ -42,7 +43,7 @@ function jsonResponse(data: unknown, status = 200): Response {
 }
 
 function getShareImportCacheKey(url: string): Request {
-  return new Request(`https://word-format.cache/import/share?url=${encodeURIComponent(url)}`, {
+  return new Request(`https://word-format.cache/import/share/${SHARE_IMPORT_CACHE_VERSION}?url=${encodeURIComponent(url)}`, {
     method: "GET",
   });
 }

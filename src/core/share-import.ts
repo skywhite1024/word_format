@@ -508,6 +508,23 @@ function isLikelyInvalidShareBody(text: string): boolean {
   return false;
 }
 
+function countMathMarkers(text: string): number {
+  return (text.match(/\\(?:frac|sum|theta|sigma|lambda|max|min|hat)|\$\$|\$[^$\n]{1,160}\$/g) ?? []).length;
+}
+
+function isLikelyFormulaStrippedGeminiText(text: string): boolean {
+  const formulaSignals = [
+    /假设函数|Hypothesis/i,
+    /损失函数|Loss Functions?/i,
+    /Sigmoid/i,
+    /数学表达式/,
+    /参数更新公式|Gradient Descent/i,
+    /正则化|Regularization/i,
+  ].filter((pattern) => pattern.test(text)).length;
+
+  return formulaSignals >= 3 && countMathMarkers(text) < 4;
+}
+
 function finalizeGeminiImportedText(title: string, text: string): { title: string; text: string } {
   const trimmed = text.trim();
   if (!trimmed) {
@@ -1076,7 +1093,7 @@ async function importGeminiShare(url: URL): Promise<ImportedShareDocument> {
     const readerOutput = await fetchTextViaJinaReader(normalizedUrl.href);
     const markdown = parseReaderMarkdown(readerOutput);
     const parsed = cleanGeminiReaderMarkdown(markdown, normalizedUrl.href, extractReaderTitle(readerOutput));
-    if (parsed.text && !isLikelyInvalidShareBody(parsed.text)) {
+    if (parsed.text && !isLikelyInvalidShareBody(parsed.text) && !isLikelyFormulaStrippedGeminiText(parsed.text)) {
       const finalized = finalizeGeminiImportedText(parsed.title, parsed.text);
       return {
         source: "gemini",
@@ -1095,7 +1112,7 @@ async function importGeminiShare(url: URL): Promise<ImportedShareDocument> {
     const proxiedReaderOutput = await fetchTextViaCodeTabs(`https://r.jina.ai/http://${normalizedUrl.href}`);
     const markdown = parseReaderMarkdown(proxiedReaderOutput);
     const parsed = cleanGeminiReaderMarkdown(markdown, normalizedUrl.href, extractReaderTitle(proxiedReaderOutput));
-    if (parsed.text && !isLikelyInvalidShareBody(parsed.text)) {
+    if (parsed.text && !isLikelyInvalidShareBody(parsed.text) && !isLikelyFormulaStrippedGeminiText(parsed.text)) {
       const finalized = finalizeGeminiImportedText(parsed.title, parsed.text);
       return {
         source: "gemini",
