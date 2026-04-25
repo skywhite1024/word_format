@@ -779,6 +779,10 @@ function buildCodeTabsProxyUrl(targetUrl: string): string {
   return `${CODETABS_PROXY_BASE}${encodeURIComponent(targetUrl)}`;
 }
 
+function buildJinaReaderUrl(targetUrl: string): string {
+  return `https://r.jina.ai/http://${targetUrl}`;
+}
+
 function buildBardShareUrl(url: URL): URL {
   const normalized = new URL(url.href);
   normalized.hostname = "bard.google.com";
@@ -830,16 +834,33 @@ async function fetchTextViaCodeTabs(url: string, init: RequestInit = {}): Promis
   return fetchText(buildCodeTabsProxyUrl(url), init);
 }
 
+async function fetchTextViaJinaReader(url: string, init: RequestInit = {}): Promise<string> {
+  return fetchText(buildJinaReaderUrl(url), init, { profile: "reader" });
+}
+
+function extractRequiredGeminiBuildLabel(html: string): string {
+  const buildLabel = extractGeminiBuildLabel(html);
+  if (!buildLabel) {
+    throw new Error("Gemini 构建标识抓取失败。");
+  }
+  return buildLabel;
+}
+
 async function fetchGeminiBuildLabelForShare(url: URL, baseOrigin: string): Promise<string> {
   try {
     return await fetchGeminiBuildLabel(baseOrigin);
   } catch {
-    const proxiedHtml = await fetchTextViaCodeTabs(url.href);
-    const buildLabel = extractGeminiBuildLabel(proxiedHtml);
-    if (!buildLabel) {
-      throw new Error("Gemini 构建标识抓取失败。");
+    try {
+      const proxiedHtml = await fetchTextViaCodeTabs(url.href);
+      return extractRequiredGeminiBuildLabel(proxiedHtml);
+    } catch {
+      const readerHtml = await fetchTextViaJinaReader(url.href, {
+        headers: {
+          "x-respond-with": "html",
+        },
+      });
+      return extractRequiredGeminiBuildLabel(readerHtml);
     }
-    return buildLabel;
   }
 }
 
@@ -892,7 +913,7 @@ async function importGeminiShare(url: URL): Promise<ImportedShareDocument> {
   }
 
   try {
-    const readerOutput = await fetchText(`https://r.jina.ai/http://${normalizedUrl.href}`, {}, { profile: "reader" });
+    const readerOutput = await fetchTextViaJinaReader(normalizedUrl.href);
     const markdown = parseReaderMarkdown(readerOutput);
     const parsed = cleanGeminiReaderMarkdown(markdown, normalizedUrl.href, extractReaderTitle(readerOutput));
     if (parsed.text && !isLikelyInvalidShareBody(parsed.text)) {

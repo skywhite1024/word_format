@@ -121,7 +121,19 @@ describe("worker api", () => {
             headers: { "Content-Type": "text/html; charset=utf-8" },
           }),
         )
+        .mockResolvedValueOnce(
+          new Response("<html><body>missing build label</body></html>", {
+            status: 200,
+            headers: { "Content-Type": "text/html; charset=utf-8" },
+          }),
+        )
         .mockRejectedValueOnce(new Error("bard root unavailable"))
+        .mockResolvedValueOnce(
+          new Response("<html><body>missing build label</body></html>", {
+            status: 200,
+            headers: { "Content-Type": "text/html; charset=utf-8" },
+          }),
+        )
         .mockResolvedValueOnce(
           new Response("<html><body>missing build label</body></html>", {
             status: 200,
@@ -159,11 +171,17 @@ describe("worker api", () => {
       expect(vi.mocked(globalThis.fetch).mock.calls[1]?.[0]).toBe(
         "https://api.codetabs.com/v1/proxy?quest=https%3A%2F%2Fgemini.google.com%2Fshare%2Fdemo",
       );
-      expect(vi.mocked(globalThis.fetch).mock.calls[2]?.[0]).toBe("https://bard.google.com/");
-      expect(vi.mocked(globalThis.fetch).mock.calls[3]?.[0]).toBe(
+      expect(vi.mocked(globalThis.fetch).mock.calls[2]?.[0]).toContain(
+        "r.jina.ai/http://https://gemini.google.com/share/demo",
+      );
+      expect(vi.mocked(globalThis.fetch).mock.calls[3]?.[0]).toBe("https://bard.google.com/");
+      expect(vi.mocked(globalThis.fetch).mock.calls[4]?.[0]).toBe(
         "https://api.codetabs.com/v1/proxy?quest=https%3A%2F%2Fbard.google.com%2Fshare%2Fdemo",
       );
-      expect(vi.mocked(globalThis.fetch).mock.calls[4]?.[0]).toContain(
+      expect(vi.mocked(globalThis.fetch).mock.calls[5]?.[0]).toContain(
+        "r.jina.ai/http://https://bard.google.com/share/demo",
+      );
+      expect(vi.mocked(globalThis.fetch).mock.calls[6]?.[0]).toContain(
         "r.jina.ai/http://https://bard.google.com/share/demo",
       );
     } finally {
@@ -201,7 +219,19 @@ describe("worker api", () => {
             headers: { "Content-Type": "text/html; charset=utf-8" },
           }),
         )
+        .mockResolvedValueOnce(
+          new Response("<html><body>missing build label</body></html>", {
+            status: 200,
+            headers: { "Content-Type": "text/html; charset=utf-8" },
+          }),
+        )
         .mockRejectedValueOnce(new Error("bard root unavailable"))
+        .mockResolvedValueOnce(
+          new Response("<html><body>missing build label</body></html>", {
+            status: 200,
+            headers: { "Content-Type": "text/html; charset=utf-8" },
+          }),
+        )
         .mockResolvedValueOnce(
           new Response("<html><body>missing build label</body></html>", {
             status: 200,
@@ -236,7 +266,7 @@ describe("worker api", () => {
       expect(data.title).toBe("高三三角函数常用值与技巧");
       expect(data.text).toContain("## 你说");
       expect(data.text).toContain("这是整理后的正文。");
-      expect(vi.mocked(globalThis.fetch).mock.calls[5]?.[0]).toBe(
+      expect(vi.mocked(globalThis.fetch).mock.calls[7]?.[0]).toBe(
         "https://api.codetabs.com/v1/proxy?quest=https%3A%2F%2Fr.jina.ai%2Fhttp%3A%2F%2Fhttps%3A%2F%2Fbard.google.com%2Fshare%2Fdemo",
       );
     } finally {
@@ -265,7 +295,19 @@ describe("worker api", () => {
             headers: { "Content-Type": "text/html; charset=utf-8" },
           }),
         )
+        .mockResolvedValueOnce(
+          new Response("<html><body>missing build label</body></html>", {
+            status: 200,
+            headers: { "Content-Type": "text/html; charset=utf-8" },
+          }),
+        )
         .mockRejectedValueOnce(new Error("bard root unavailable"))
+        .mockResolvedValueOnce(
+          new Response("<html><body>missing build label</body></html>", {
+            status: 200,
+            headers: { "Content-Type": "text/html; charset=utf-8" },
+          }),
+        )
         .mockResolvedValueOnce(
           new Response("<html><body>missing build label</body></html>", {
             status: 200,
