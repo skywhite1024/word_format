@@ -963,7 +963,17 @@ async function fetchTextViaCodeTabs(url: string, init: RequestInit = {}): Promis
 }
 
 async function fetchTextViaJinaReader(url: string, init: RequestInit = {}): Promise<string> {
-  return fetchText(buildJinaReaderUrl(url), init, { profile: "reader" });
+  return fetchText(
+    buildJinaReaderUrl(url),
+    {
+      ...init,
+      headers: {
+        "x-cache-tolerance": "86400",
+        ...Object.fromEntries(new Headers(init.headers).entries()),
+      },
+    },
+    { profile: "reader" },
+  );
 }
 
 function extractRequiredGeminiBuildLabel(html: string): string {
