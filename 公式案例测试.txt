@@ -1,0 +1,1321 @@
+下面这份可以当作“机器学习公式总览”。我不会把所有流派的公式机械罗列，而是按机器学习真正的主线来讲：**模型怎么表示、损失怎么定义、参数怎么更新、效果怎么评估**。理解这四条线，绝大多数公式都能串起来。
+
+---
+
+# 1. 机器学习里最核心的总公式
+
+几乎所有监督学习，都可以写成这个形式：
+
+[
+\min_{\theta} ; J(\theta)
+= \frac{1}{n}\sum_{i=1}^{n} L\big(f_\theta(x_i), y_i\big) + \lambda ,\Omega(\theta)
+]
+
+这里：
+
+* (x_i)：第 (i) 个输入样本
+* (y_i)：真实标签
+* (f_\theta(x_i))：模型预测
+* (L(\cdot))：损失函数，衡量“预测错了多少”
+* (\Omega(\theta))：正则项，防止过拟合
+* (\lambda)：控制正则强度
+* (\theta)：模型参数
+
+这一个式子几乎就是整个机器学习的骨架。
+你看到的线性回归、逻辑回归、神经网络、SVM，本质上都只是：
+
+1. **模型形式 (f_\theta) 不同**
+2. **损失函数 (L) 不同**
+3. **正则项 (\Omega) 不同**
+4. **优化方法不同**
+
+---
+
+# 2. 线性模型：最基础的一类公式
+
+## 2.1 线性回归
+
+最经典公式：
+
+[
+\hat{y} = w^T x + b
+]
+
+也可以写成：
+
+[
+\hat{y} = \sum_{j=1}^{d} w_j x_j + b
+]
+
+含义：
+
+* (x)：特征向量
+* (w)：权重
+* (b)：偏置
+* (\hat{y})：预测值
+
+它假设输出是输入特征的线性组合。
+
+---
+
+## 2.2 均方误差 MSE
+
+线性回归常用损失函数：
+
+[
+L(\hat{y}, y) = (\hat{y}-y)^2
+]
+
+整个数据集上的目标函数：
+
+[
+J(w,b)=\frac{1}{n}\sum_{i=1}^{n}(\hat{y}_i-y_i)^2
+]
+
+也常写成带 (1/2) 的形式，方便求导：
+
+[
+J(w,b)=\frac{1}{2n}\sum_{i=1}^{n}(\hat{y}_i-y_i)^2
+]
+
+为什么用平方：
+
+* 大误差惩罚更重
+* 可导、优化方便
+* 与高斯噪声假设一致
+
+---
+
+## 2.3 正规方程
+
+在线性回归中，如果用矩阵表示：
+
+[
+\hat{y}=Xw
+]
+
+最小二乘解为：
+
+[
+w=(X^TX)^{-1}X^Ty
+]
+
+这叫**正规方程**。
+它给出闭式解，不需要迭代，但要求 (X^TX) 可逆，而且大规模时计算成本高。
+
+---
+
+## 2.4 Ridge 和 Lasso
+
+### Ridge（L2 正则）
+
+[
+J(w)=\frac{1}{n}\sum_{i=1}^{n}(\hat{y}_i-y_i)^2 + \lambda |w|_2^2
+]
+
+其中：
+
+[
+|w|_2^2=\sum_j w_j^2
+]
+
+作用：
+
+* 限制参数过大
+* 提高稳定性
+* 缓解多重共线性
+* 不会把参数真正压成 0
+
+### Lasso（L1 正则）
+
+[
+J(w)=\frac{1}{n}\sum_{i=1}^{n}(\hat{y}_i-y_i)^2 + \lambda |w|_1
+]
+
+其中：
+
+[
+|w|_1=\sum_j |w_j|
+]
+
+作用：
+
+* 能做特征选择
+* 让一部分参数直接变成 0
+
+### Elastic Net
+
+[
+J(w)=\frac{1}{n}\sum_{i=1}^{n}(\hat{y}_i-y_i)^2
++\lambda_1 |w|_1 + \lambda_2 |w|_2^2
+]
+
+它结合了 L1 和 L2。
+
+---
+
+# 3. 分类模型的核心公式
+
+## 3.1 逻辑回归：Sigmoid
+
+二分类里最经典的概率映射：
+
+[
+\sigma(z)=\frac{1}{1+e^{-z}}
+]
+
+其中：
+
+[
+z=w^T x+b
+]
+
+所以逻辑回归输出：
+
+[
+P(y=1\mid x)=\sigma(w^T x+b)
+]
+
+它把任意实数映射到 ((0,1))，因此适合表示概率。
+
+---
+
+## 3.2 逻辑回归的交叉熵损失
+
+二分类常用损失：
+
+[
+L(y,\hat{p})=-\big[y\log \hat{p} + (1-y)\log(1-\hat{p})\big]
+]
+
+整个目标函数：
+
+[
+J(w,b)= -\frac{1}{n}\sum_{i=1}^{n}
+\Big[y_i\log \hat{p}_i+(1-y_i)\log(1-\hat{p}_i)\Big]
+]
+
+其中 (\hat{p}_i=P(y_i=1\mid x_i))。
+
+这个损失为什么重要：
+
+* 它来自**伯努利分布的极大似然**
+* 预测越自信却越错，惩罚越大
+* 比 MSE 更适合分类概率建模
+
+---
+
+## 3.3 Softmax：多分类的核心公式
+
+当类别有 (K) 个时：
+
+[
+P(y=k\mid x)=
+\frac{e^{z_k}}{\sum_{j=1}^{K}e^{z_j}}
+]
+
+其中 (z_k) 是第 (k) 类的打分。
+
+它的特点：
+
+* 输出每个类别的概率
+* 所有类别概率之和为 1
+
+---
+
+## 3.4 多分类交叉熵
+
+若真实标签用 one-hot 向量 (y) 表示，预测概率为 (\hat{y})，则：
+
+[
+L(y,\hat{y})=-\sum_{k=1}^{K} y_k \log \hat{y}_k
+]
+
+如果真实类别是 (c)，可简写为：
+
+[
+L = -\log \hat{y}_c
+]
+
+这说明：
+**模型只要把真实类别的概率拉高，损失就会下降。**
+
+---
+
+# 4. 概率视角：似然、极大似然、贝叶斯
+
+机器学习很多公式其实都来自概率建模。
+
+## 4.1 似然函数
+
+给定参数 (\theta)，样本出现的概率：
+
+[
+L(\theta)=P(D\mid \theta)
+]
+
+其中 (D) 表示数据集。
+
+若样本独立同分布：
+
+[
+L(\theta)=\prod_{i=1}^{n} P(y_i\mid x_i;\theta)
+]
+
+因为连乘不方便，通常取对数：
+
+[
+\log L(\theta)=\sum_{i=1}^{n}\log P(y_i\mid x_i;\theta)
+]
+
+---
+
+## 4.2 极大似然估计 MLE
+
+[
+\theta^*=\arg\max_\theta P(D\mid \theta)
+]
+
+等价于：
+
+[
+\theta^*=\arg\max_\theta \log P(D\mid \theta)
+]
+
+再等价于最小化负对数似然：
+
+[
+\theta^*=\arg\min_\theta -\log P(D\mid \theta)
+]
+
+很多损失函数，本质上就是负对数似然。
+
+例如：
+
+* 高斯噪声 (\Rightarrow) MSE
+* 伯努利分布 (\Rightarrow) 二分类交叉熵
+* 多项分布 (\Rightarrow) Softmax 交叉熵
+
+---
+
+## 4.3 贝叶斯公式
+
+[
+P(\theta\mid D)=\frac{P(D\mid \theta)P(\theta)}{P(D)}
+]
+
+含义：
+
+* (P(\theta))：先验
+* (P(D\mid \theta))：似然
+* (P(\theta\mid D))：后验
+
+---
+
+## 4.4 MAP 估计
+
+最大后验估计：
+
+[
+\theta^*=\arg\max_\theta P(\theta\mid D)
+]
+
+等价于：
+
+[
+\theta^*=\arg\max_\theta \big[\log P(D\mid \theta)+\log P(\theta)\big]
+]
+
+这和“损失 + 正则”非常像。
+也就是说：
+
+* **极大似然**：只看数据
+* **最大后验**：数据 + 先验约束
+
+L2 正则可以看成高斯先验，L1 正则可以看成拉普拉斯先验。
+
+---
+
+# 5. 支持向量机 SVM 的核心公式
+
+## 5.1 分类超平面
+
+[
+f(x)=w^T x+b
+]
+
+预测类别通常取符号：
+
+[
+\hat{y}=\text{sign}(w^T x+b)
+]
+
+---
+
+## 5.2 间隔 Margin
+
+对于样本 ((x_i,y_i))，其中 (y_i\in{-1,+1})，函数间隔写作：
+
+[
+y_i(w^T x_i+b)
+]
+
+SVM 想最大化分类间隔，本质上让模型不仅分对，还要“分得远”。
+
+---
+
+## 5.3 硬间隔 SVM
+
+[
+\min_{w,b}\frac{1}{2}|w|^2
+]
+
+满足约束：
+
+[
+y_i(w^T x_i+b)\ge 1,\quad \forall i
+]
+
+目标里最小化 (|w|^2)，其实等价于最大化间隔。
+
+---
+
+## 5.4 软间隔 SVM
+
+加入松弛变量 (\xi_i)：
+
+[
+\min_{w,b,\xi}\frac{1}{2}|w|^2 + C\sum_{i=1}^{n}\xi_i
+]
+
+约束：
+
+[
+y_i(w^T x_i+b)\ge 1-\xi_i,\quad \xi_i\ge 0
+]
+
+这里 (C) 控制“间隔大”和“分类错误少”之间的平衡。
+
+---
+
+## 5.5 Hinge Loss
+
+SVM 常写成损失最小化形式：
+
+[
+L(y,f(x))=\max(0,1-yf(x))
+]
+
+整体目标：
+
+[
+J(w)=\frac{1}{n}\sum_{i=1}^{n}\max(0,1-y_i f(x_i))+\lambda |w|^2
+]
+
+---
+
+# 6. 决策树与集成学习里的公式
+
+## 6.1 熵 Entropy
+
+分类不纯度的重要指标：
+
+[
+H(Y)=-\sum_{k=1}^{K} p_k \log p_k
+]
+
+* 类别越混乱，熵越大
+* 类别越纯，熵越小
+
+---
+
+## 6.2 信息增益
+
+[
+\text{Gain}(D, A)=H(D)-\sum_{v\in \text{Values}(A)}\frac{|D_v|}{|D|}H(D_v)
+]
+
+表示按特征 (A) 分裂后，不确定性减少了多少。
+ID3 就是按信息增益选划分特征。
+
+---
+
+## 6.3 Gini 指数
+
+CART 常用：
+
+[
+\text{Gini}(D)=1-\sum_{k=1}^{K} p_k^2
+]
+
+Gini 越小，节点越纯。
+
+---
+
+## 6.4 AdaBoost 权重更新
+
+样本权重更新大意：
+
+[
+w_i^{(t+1)} = w_i^{(t)} \exp(-\alpha_t y_i h_t(x_i))
+]
+
+弱分类器权重：
+
+[
+\alpha_t=\frac{1}{2}\log\frac{1-\epsilon_t}{\epsilon_t}
+]
+
+其中 (\epsilon_t) 是第 (t) 个弱分类器错误率。
+
+直观上：
+
+* 分错的样本权重上升
+* 后续模型更关注难样本
+
+---
+
+## 6.5 梯度提升的核心思想
+
+梯度提升不是直接拟合标签，而是拟合当前损失对预测的负梯度：
+
+[
+r_i^{(t)}=-\left[\frac{\partial L(y_i,F(x_i))}{\partial F(x_i)}\right]*{F=F*{t-1}}
+]
+
+然后：
+
+[
+F_t(x)=F_{t-1}(x)+\eta h_t(x)
+]
+
+其中：
+
+* (h_t(x))：当前弱学习器
+* (\eta)：学习率
+
+这就是 GBDT / XGBoost / LightGBM 的核心思想。
+
+---
+
+# 7. 优化算法：参数是怎么学出来的
+
+## 7.1 梯度下降
+
+最基础公式：
+
+[
+\theta \leftarrow \theta - \eta \nabla_\theta J(\theta)
+]
+
+其中：
+
+* (\eta)：学习率
+* (\nabla_\theta J(\theta))：梯度
+
+含义：
+沿着损失下降最快的反方向走一步。
+
+---
+
+## 7.2 随机梯度下降 SGD
+
+对单个样本更新：
+
+[
+\theta \leftarrow \theta - \eta \nabla_\theta L_i(\theta)
+]
+
+mini-batch 版本：
+
+[
+\theta \leftarrow \theta - \eta \frac{1}{|B|}\sum_{i\in B}\nabla_\theta L_i(\theta)
+]
+
+相比全量梯度下降：
+
+* 计算更快
+* 噪声更大
+* 更适合大数据和深度学习
+
+---
+
+## 7.3 Momentum
+
+[
+v_t=\beta v_{t-1}+(1-\beta)\nabla_\theta J(\theta_t)
+]
+
+[
+\theta_{t+1}=\theta_t-\eta v_t
+]
+
+作用：
+
+* 减少震荡
+* 加快收敛
+* 类似“带惯性地滚下山”
+
+---
+
+## 7.4 Adam
+
+一阶矩估计：
+
+[
+m_t=\beta_1 m_{t-1}+(1-\beta_1)g_t
+]
+
+二阶矩估计：
+
+[
+v_t=\beta_2 v_{t-1}+(1-\beta_2)g_t^2
+]
+
+偏差修正：
+
+[
+\hat{m}_t=\frac{m_t}{1-\beta_1^t},\qquad
+\hat{v}_t=\frac{v_t}{1-\beta_2^t}
+]
+
+参数更新：
+
+[
+\theta_{t+1}=\theta_t-\eta \frac{\hat{m}_t}{\sqrt{\hat{v}_t}+\epsilon}
+]
+
+Adam 的直觉：
+
+* 利用梯度均值判断方向
+* 利用梯度方差调节步长
+* 不同参数自适应学习率
+
+---
+
+# 8. 神经网络的关键公式
+
+## 8.1 单层神经元
+
+[
+z = w^T x + b
+]
+
+[
+a = \phi(z)
+]
+
+其中 (\phi) 是激活函数。
+
+这就是“线性变换 + 非线性”。
+
+---
+
+## 8.2 常见激活函数
+
+### Sigmoid
+
+[
+\sigma(z)=\frac{1}{1+e^{-z}}
+]
+
+### Tanh
+
+[
+\tanh(z)=\frac{e^z-e^{-z}}{e^z+e^{-z}}
+]
+
+### ReLU
+
+[
+\text{ReLU}(z)=\max(0,z)
+]
+
+### Leaky ReLU
+
+[
+\text{LeakyReLU}(z)=
+\begin{cases}
+z, & z>0\
+\alpha z, & z\le 0
+\end{cases}
+]
+
+ReLU 之所以流行，是因为：
+
+* 计算简单
+* 缓解梯度消失
+* 训练深层网络更稳定
+
+---
+
+## 8.3 多层网络
+
+第 (l) 层常写为：
+
+[
+z^{(l)}=W^{(l)}a^{(l-1)}+b^{(l)}
+]
+
+[
+a^{(l)}=\phi\big(z^{(l)}\big)
+]
+
+最后一层输出：
+
+[
+\hat{y}=f_\theta(x)
+]
+
+整个深度学习其实就是不断堆叠这种结构。
+
+---
+
+## 8.4 反向传播的核心：链式法则
+
+若损失为 (L)，则某层参数梯度：
+
+[
+\frac{\partial L}{\partial W^{(l)}}=
+\frac{\partial L}{\partial a^{(l)}}
+\cdot
+\frac{\partial a^{(l)}}{\partial z^{(l)}}
+\cdot
+\frac{\partial z^{(l)}}{\partial W^{(l)}}
+]
+
+本质就是把误差从后往前一层层传回去。
+
+---
+
+## 8.5 输出层常见搭配
+
+* 回归：最后一层常直接线性输出
+* 二分类：最后一层用 Sigmoid + BCE
+* 多分类：最后一层用 Softmax + Cross Entropy
+
+---
+
+## 8.6 Dropout
+
+训练时随机屏蔽神经元，可形式化为：
+
+[
+\tilde{h}=m \odot h,\quad m_j \sim \text{Bernoulli}(p)
+]
+
+其中：
+
+* (m)：随机掩码
+* (\odot)：逐元素乘法
+* (p)：保留概率
+
+作用是减少神经元共适应，防止过拟合。
+
+---
+
+## 8.7 Batch Normalization
+
+对一个 mini-batch：
+
+[
+\mu_B=\frac{1}{m}\sum_{i=1}^{m}x_i,\qquad
+\sigma_B^2=\frac{1}{m}\sum_{i=1}^{m}(x_i-\mu_B)^2
+]
+
+标准化：
+
+[
+\hat{x}_i=\frac{x_i-\mu_B}{\sqrt{\sigma_B^2+\epsilon}}
+]
+
+再进行缩放和平移：
+
+[
+y_i=\gamma \hat{x}_i+\beta
+]
+
+作用：
+
+* 稳定训练
+* 允许更大学习率
+* 加快收敛
+
+---
+
+# 9. 序列模型公式
+
+## 9.1 RNN
+
+[
+h_t=\phi(W_x x_t + W_h h_{t-1}+b)
+]
+
+[
+y_t=W_y h_t + c
+]
+
+含义：
+
+* 当前隐藏状态 (h_t) 依赖当前输入 (x_t) 和前一时刻状态 (h_{t-1})
+
+问题：长序列里容易梯度消失或爆炸。
+
+---
+
+## 9.2 LSTM
+
+遗忘门：
+
+[
+f_t=\sigma(W_f[h_{t-1},x_t]+b_f)
+]
+
+输入门：
+
+[
+i_t=\sigma(W_i[h_{t-1},x_t]+b_i)
+]
+
+候选记忆：
+
+[
+\tilde{C}*t=\tanh(W_c[h*{t-1},x_t]+b_c)
+]
+
+细胞状态更新：
+
+[
+C_t=f_t\odot C_{t-1}+i_t\odot \tilde{C}_t
+]
+
+输出门：
+
+[
+o_t=\sigma(W_o[h_{t-1},x_t]+b_o)
+]
+
+隐藏状态：
+
+[
+h_t=o_t\odot \tanh(C_t)
+]
+
+这些门控公式的作用，就是让模型学会“该记什么、该忘什么”。
+
+---
+
+# 10. 注意力机制与 Transformer 公式
+
+这是现代机器学习尤其大模型里的核心。
+
+## 10.1 Scaled Dot-Product Attention
+
+[
+\text{Attention}(Q,K,V)=
+\text{softmax}\left(\frac{QK^T}{\sqrt{d_k}}\right)V
+]
+
+这里：
+
+* (Q)：Query
+* (K)：Key
+* (V)：Value
+* (d_k)：Key 维度
+
+解释：
+
+1. (QK^T)：算相关性分数
+2. 除以 (\sqrt{d_k})：防止数值过大
+3. softmax：转成权重
+4. 乘 (V)：按权重聚合信息
+
+---
+
+## 10.2 Multi-Head Attention
+
+[
+\text{head}_i=\text{Attention}(QW_i^Q,KW_i^K,VW_i^V)
+]
+
+[
+\text{MultiHead}(Q,K,V)=\text{Concat}(\text{head}_1,\dots,\text{head}_h)W^O
+]
+
+多头的意义是：
+不同头可以关注不同关系，比如语法、位置、语义依赖。
+
+---
+
+## 10.3 位置编码
+
+经典 Transformer 中常用正弦位置编码：
+
+[
+PE(pos,2i)=\sin\left(\frac{pos}{10000^{2i/d}}\right)
+]
+
+[
+PE(pos,2i+1)=\cos\left(\frac{pos}{10000^{2i/d}}\right)
+]
+
+因为注意力本身不含顺序信息，所以要额外注入位置信息。
+
+---
+
+# 11. 无监督学习中的经典公式
+
+## 11.1 K-means
+
+目标函数：
+
+[
+J=\sum_{i=1}^{n}\sum_{k=1}^{K} r_{ik}|x_i-\mu_k|^2
+]
+
+其中：
+
+* (r_{ik}=1) 表示样本 (i) 属于簇 (k)
+* (\mu_k) 是第 (k) 个簇中心
+
+K-means 就是在最小化簇内平方误差。
+
+簇中心更新：
+
+[
+\mu_k=\frac{1}{N_k}\sum_{i:r_{ik}=1}x_i
+]
+
+---
+
+## 11.2 高斯混合模型 GMM
+
+概率密度：
+
+[
+p(x)=\sum_{k=1}^{K}\pi_k ,\mathcal{N}(x\mid \mu_k,\Sigma_k)
+]
+
+其中：
+
+* (\pi_k)：混合系数
+* (\mu_k)：均值
+* (\Sigma_k)：协方差矩阵
+
+它比 K-means 更强，因为它是“软聚类”。
+
+---
+
+## 11.3 EM 算法中的责任度
+
+E 步：
+
+[
+\gamma(z_{ik})=
+\frac{\pi_k \mathcal{N}(x_i\mid \mu_k,\Sigma_k)}
+{\sum_{j=1}^{K}\pi_j \mathcal{N}(x_i\mid \mu_j,\Sigma_j)}
+]
+
+表示样本 (x_i) 属于第 (k) 个高斯成分的概率。
+
+---
+
+## 11.4 PCA
+
+数据中心化后，协方差矩阵：
+
+[
+\Sigma=\frac{1}{n}X^TX
+]
+
+然后求特征值分解：
+
+[
+\Sigma v=\lambda v
+]
+
+取最大特征值对应的特征向量作为主成分方向。
+
+PCA 的目标可理解为：
+
+* 最大化投影后方差
+* 最小化重构误差
+
+---
+
+## 11.5 PCA 的方差解释率
+
+[
+\text{Explained Variance Ratio}_k
+=================================
+
+\frac{\lambda_k}{\sum_j \lambda_j}
+]
+
+用来表示第 (k) 个主成分解释了多少信息。
+
+---
+
+# 12. 评价指标公式
+
+## 12.1 分类指标
+
+设：
+
+* TP：真正例
+* TN：真负例
+* FP：假正例
+* FN：假负例
+
+### Accuracy
+
+[
+\text{Accuracy}=\frac{TP+TN}{TP+TN+FP+FN}
+]
+
+### Precision
+
+[
+\text{Precision}=\frac{TP}{TP+FP}
+]
+
+### Recall
+
+[
+\text{Recall}=\frac{TP}{TP+FN}
+]
+
+### F1-score
+
+[
+F1=\frac{2\cdot \text{Precision}\cdot \text{Recall}}
+{\text{Precision}+\text{Recall}}
+]
+
+什么时候看什么：
+
+* 类别均衡：Accuracy 可参考
+* 关心误报：Precision 更重要
+* 关心漏报：Recall 更重要
+* 想平衡两者：F1
+
+---
+
+## 12.2 回归指标
+
+### MAE
+
+[
+\text{MAE}=\frac{1}{n}\sum_{i=1}^{n}|\hat{y}_i-y_i|
+]
+
+### MSE
+
+[
+\text{MSE}=\frac{1}{n}\sum_{i=1}^{n}(\hat{y}_i-y_i)^2
+]
+
+### RMSE
+
+[
+\text{RMSE}=\sqrt{\text{MSE}}
+]
+
+### (R^2)
+
+[
+R^2=1-\frac{\sum_i (y_i-\hat{y}_i)^2}{\sum_i (y_i-\bar{y})^2}
+]
+
+其中 (\bar{y}) 是真实值均值。
+
+含义：
+
+* (R^2=1)：完美拟合
+* (R^2=0)：不比均值预测好
+* (R^2<0)：比直接猜均值还差
+
+---
+
+# 13. 泛化与偏差-方差公式
+
+机器学习最终关心的不是训练集，而是泛化能力。
+
+经典分解：
+
+[
+\mathbb{E}\big[(\hat{f}(x)-f(x))^2\big]
+=======================================
+
+\text{Bias}^2 + \text{Variance} + \text{Noise}
+]
+
+解释：
+
+* **Bias（偏差）**：模型太简单，学不够
+* **Variance（方差）**：模型太敏感，过拟合
+* **Noise（噪声）**：数据自身不可避免的误差
+
+这就是为什么机器学习总在做平衡：
+
+* 模型过简单：欠拟合
+* 模型过复杂：过拟合
+
+---
+
+# 14. 信息论相关公式
+
+这些在损失函数和表示学习里很常见。
+
+## 14.1 熵
+
+[
+H(P)=-\sum_x P(x)\log P(x)
+]
+
+## 14.2 交叉熵
+
+[
+H(P,Q)=-\sum_x P(x)\log Q(x)
+]
+
+## 14.3 KL 散度
+
+[
+D_{KL}(P|Q)=\sum_x P(x)\log \frac{P(x)}{Q(x)}
+]
+
+并且有关系：
+
+[
+H(P,Q)=H(P)+D_{KL}(P|Q)
+]
+
+这说明：
+最小化交叉熵，本质上是在让预测分布 (Q) 接近真实分布 (P)。
+
+---
+
+# 15. 一些高级但常见的公式
+
+## 15.1 对比学习 InfoNCE
+
+[
+L=-\log
+\frac{\exp(\text{sim}(z_i,z_i^+)/\tau)}
+{\sum_{j=1}^{N}\exp(\text{sim}(z_i,z_j)/\tau)}
+]
+
+其中：
+
+* (z_i)：当前样本表示
+* (z_i^+)：正样本表示
+* (\text{sim})：相似度函数
+* (\tau)：温度参数
+
+作用：让正样本更近、负样本更远。
+
+---
+
+## 15.2 VAE 的 ELBO
+
+[
+\mathcal{L}(\theta,\phi;x)
+==========================
+
+## \mathbb{E}*{q*\phi(z\mid x)}[\log p_\theta(x\mid z)]
+
+D_{KL}(q_\phi(z\mid x)|p(z))
+]
+
+它包含两部分：
+
+* 重构项：能否生成原样本
+* KL 项：潜变量分布是否接近先验
+
+---
+
+## 15.3 强化学习里的价值函数
+
+状态价值函数：
+
+[
+V^\pi(s)=\mathbb{E}*\pi\left[\sum*{t=0}^{\infty}\gamma^t r_t \mid s_0=s\right]
+]
+
+动作价值函数：
+
+[
+Q^\pi(s,a)=\mathbb{E}*\pi\left[\sum*{t=0}^{\infty}\gamma^t r_t \mid s_0=s,a_0=a\right]
+]
+
+Bellman 方程：
+
+[
+V^\pi(s)=\sum_a \pi(a\mid s)\sum_{s',r}p(s',r\mid s,a)\big[r+\gamma V^\pi(s')\big]
+]
+
+虽然强化学习通常单列，但它也属于机器学习的重要分支。
+
+---
+
+# 16. 怎样把这些公式真正串起来
+
+如果只记公式，很快会乱。更有效的方法是按下面这条链理解：
+
+## 16.1 第一步：选模型
+
+[
+\hat{y}=f_\theta(x)
+]
+
+比如：
+
+* 线性回归：(w^T x+b)
+* 神经网络：多层非线性变换
+* SVM：间隔最大化分类器
+* Transformer：注意力结构
+
+---
+
+## 16.2 第二步：选损失
+
+[
+L(\hat{y},y)
+]
+
+比如：
+
+* 回归：MSE / MAE
+* 二分类：BCE
+* 多分类：Cross Entropy
+* 排序、对比学习：特殊损失
+
+---
+
+## 16.3 第三步：加约束
+
+[
++\lambda \Omega(\theta)
+]
+
+比如：
+
+* L1：稀疏
+* L2：平滑、稳定
+* Dropout：结构正则
+* Early stopping：训练过程正则
+
+---
+
+## 16.4 第四步：优化
+
+[
+\theta \leftarrow \theta - \eta \nabla_\theta J(\theta)
+]
+
+用 GD / SGD / Adam 等把损失最小化。
+
+---
+
+## 16.5 第五步：评估
+
+分类看：
+
+* Accuracy
+* Precision / Recall
+* F1
+* AUC
+
+回归看：
+
+* MAE
+* MSE / RMSE
+* (R^2)
+
+---
+
+# 17. 最值得你优先掌握的公式
+
+如果你现在在学机器学习，最先应该彻底吃透的是这 12 个：
+
+1. 线性模型
+   [
+   \hat{y}=w^T x+b
+   ]
+
+2. 总体经验风险最小化
+   [
+   \min_\theta \frac{1}{n}\sum_i L(f_\theta(x_i),y_i)+\lambda\Omega(\theta)
+   ]
+
+3. MSE
+   [
+   \frac{1}{n}\sum_i (\hat{y}_i-y_i)^2
+   ]
+
+4. Sigmoid
+   [
+   \frac{1}{1+e^{-z}}
+   ]
+
+5. Softmax
+   [
+   \frac{e^{z_k}}{\sum_j e^{z_j}}
+   ]
+
+6. 交叉熵
+   [
+   -\sum_k y_k\log \hat{y}_k
+   ]
+
+7. L1 / L2 正则
+   [
+   |w|_1,\qquad |w|_2^2
+   ]
+
+8. 梯度下降
+   [
+   \theta\leftarrow\theta-\eta\nabla_\theta J(\theta)
+   ]
+
+9. 链式法则 / 反向传播
+
+10. 熵 / 信息增益
+    [
+    H(Y)=-\sum_k p_k\log p_k
+    ]
+
+11. K-means 目标
+    [
+    \sum_{i,k} r_{ik}|x_i-\mu_k|^2
+    ]
+
+12. 注意力
+    [
+    \text{softmax}\left(\frac{QK^T}{\sqrt{d_k}}\right)V
+    ]
+
+把这几个搞明白，机器学习的大门基本就开了。
+
+---
+
+# 18. 一句话总结
+
+机器学习里的公式，归根到底就是四类：
+
+* **表示公式**：模型怎么从输入得到输出
+* **概率公式**：模型如何解释数据生成过程
+* **损失公式**：模型错了多少
+* **优化公式**：参数如何更新
+
+所以不要把它们看成零散知识点，而要看成一条链：
+
+[
+\text{数据} \rightarrow \text{模型} \rightarrow \text{损失} \rightarrow \text{梯度} \rightarrow \text{更新} \rightarrow \text{评估}
+]
+
+这才是机器学习公式体系的核心逻辑。
+
+如果你愿意，我下一条可以继续给你整理成一份更适合背诵的《机器学习公式速查表》，或者按“线性回归→逻辑回归→神经网络”顺序逐个推导。
+d:\下载\正确识别公式案例测试.docx

@@ -1,0 +1,1 @@
+{"text":"[\n\\text{数据} \\rightarrow \\text{模型} \\rightarrow \\text{损失} \\rightarrow \\text{梯度} \\rightarrow \\text{更新} \\rightarrow \\text{评估}\n]","mode":"official","useLlm":false,"mathItalic":true}

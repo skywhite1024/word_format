@@ -1,0 +1,582 @@
+:root {
+  --bg: #edf3ff;
+  --bg-accent: #f6f1e8;
+  --surface: rgba(255, 255, 255, 0.88);
+  --surface-strong: #ffffff;
+  --line: rgba(28, 49, 87, 0.14);
+  --line-strong: rgba(28, 49, 87, 0.22);
+  --ink: #162033;
+  --muted: #5a6578;
+  --brand: #1f5eff;
+  --brand-soft: rgba(31, 94, 255, 0.12);
+  --success: #248a5c;
+  --warning: #c87b16;
+  --shadow: 0 10px 30px rgba(28, 49, 87, 0.08);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+}
+
+body {
+  color: var(--ink);
+  font-family: "PingFang SC", "Microsoft YaHei", "Noto Sans SC", sans-serif;
+  background: linear-gradient(180deg, #f7faff 0%, var(--bg) 42%, #eef4ff 100%);
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+.shell {
+  max-width: 1500px;
+  margin: 0 auto;
+  padding: 28px 20px 40px;
+}
+
+.hero {
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+  align-items: flex-end;
+  margin-bottom: 22px;
+}
+
+.eyebrow {
+  margin: 0 0 10px;
+  color: var(--brand);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.hero h1 {
+  margin: 0;
+  font-family: "Noto Serif SC", "Songti SC", serif;
+  font-size: clamp(34px, 4vw, 60px);
+  line-height: 1.08;
+}
+
+.hero-text {
+  max-width: 860px;
+  margin: 14px 0 0;
+  color: var(--muted);
+  font-size: 16px;
+  line-height: 1.75;
+}
+
+.hero-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+  align-self: center;
+}
+
+.hero-badges span,
+.stat-pill,
+.preview-chip {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.88);
+  backdrop-filter: none;
+}
+
+.hero-badges span {
+  padding: 10px 14px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 0.92fr) minmax(420px, 0.88fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.editor-panel,
+.preview-panel {
+  min-width: 0;
+}
+
+.card {
+  margin-bottom: 18px;
+  border: 1px solid var(--line);
+  border-radius: 26px;
+  background: rgba(255, 255, 255, 0.96);
+  backdrop-filter: none;
+  box-shadow: var(--shadow);
+}
+
+.config-card,
+.share-card,
+.editor-card,
+.preview-card {
+  padding: 22px;
+}
+
+.note-card {
+  padding: 16px 18px;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.note-card p {
+  margin: 0;
+}
+
+.config-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px 20px;
+  align-items: end;
+}
+
+.field {
+  display: block;
+  flex: 1 1 220px;
+}
+
+.field span {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.check {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.64);
+  color: var(--muted);
+}
+
+.check input {
+  width: 16px;
+  height: 16px;
+}
+
+select,
+input[type="url"],
+textarea {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface-strong);
+  padding: 12px 14px;
+  color: var(--ink);
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease,
+    transform 0.2s ease;
+}
+
+select:focus,
+input[type="url"]:focus,
+textarea:focus {
+  outline: none;
+  border-color: rgba(31, 94, 255, 0.48);
+  box-shadow: 0 0 0 4px rgba(31, 94, 255, 0.1);
+}
+
+textarea {
+  min-height: 420px;
+  resize: vertical;
+  line-height: 1.7;
+}
+
+.section-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+  margin-bottom: 16px;
+}
+
+.section-head h2 {
+  margin: 0;
+  font-family: "Noto Serif SC", "Songti SC", serif;
+  font-size: 24px;
+}
+
+.section-head p {
+  margin: 8px 0 0;
+  color: var(--muted);
+  line-height: 1.6;
+  font-size: 14px;
+}
+
+.meta-inline {
+  color: var(--muted);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.share-row {
+  display: flex;
+  gap: 12px;
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+button {
+  border: 0;
+  border-radius: 14px;
+  padding: 12px 18px;
+  font-weight: 700;
+  cursor: pointer;
+  transition:
+    transform 0.18s ease,
+    box-shadow 0.18s ease,
+    opacity 0.18s ease;
+}
+
+button:hover {
+  transform: translateY(-1px);
+}
+
+button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
+}
+
+#formatBtn,
+#importShareBtn {
+  background: var(--brand);
+  color: #fff;
+  box-shadow: 0 12px 28px rgba(31, 94, 255, 0.24);
+}
+
+.secondary-btn {
+  background: rgba(255, 255, 255, 0.86);
+  color: var(--ink);
+  border: 1px solid var(--line);
+}
+
+.ghost-btn {
+  background: transparent;
+  color: var(--muted);
+  border: 1px dashed var(--line-strong);
+}
+
+.stats-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.stat-pill {
+  padding: 10px 14px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.preview-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.preview-chip {
+  padding: 8px 12px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.preview-card {
+  background: rgba(255, 255, 255, 0.96);
+  backdrop-filter: none;
+}
+
+.preview-body {
+  min-height: 860px;
+  padding: 26px;
+  border: 1px solid rgba(34, 55, 88, 0.08);
+  border-radius: 22px;
+  background: linear-gradient(180deg, rgba(243, 247, 255, 0.86), rgba(255, 255, 255, 0.96));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  contain: layout paint style;
+}
+
+.preview-body > * {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 160px;
+}
+
+.preview-body h1,
+.preview-body h2,
+.preview-body h3 {
+  color: #101a2e;
+  font-family: "Noto Serif SC", "Songti SC", serif;
+}
+
+.preview-body h1 {
+  margin: 0 0 22px;
+  font-size: 34px;
+  line-height: 1.2;
+  text-align: center;
+}
+
+.preview-body h2 {
+  margin: 22px 0 10px;
+  font-size: 24px;
+}
+
+.preview-body h3 {
+  margin: 18px 0 8px;
+  font-size: 18px;
+}
+
+.preview-body p {
+  margin: 12px 0;
+  font-size: 16px;
+  line-height: 1.88;
+  text-indent: 2em;
+}
+
+.preview-body .paragraph-no-indent {
+  text-indent: 0;
+}
+
+.preview-body .preview-reference {
+  text-indent: 0;
+  padding-left: 2em;
+  text-indent: -1.4em;
+}
+
+.preview-body .caption {
+  margin: 18px 0 8px;
+  text-align: center;
+  text-indent: 0;
+  color: #29364a;
+  font-weight: 600;
+}
+
+.preview-body .equation-block {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 12px;
+  align-items: center;
+  margin: 18px 0;
+  padding: 14px 18px;
+  border: 1px solid rgba(31, 94, 255, 0.18);
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(248, 251, 255, 0.96), rgba(240, 246, 255, 0.92));
+  contain: layout paint;
+}
+
+.preview-body .equation-text {
+  font-family: "Cambria Math", "Times New Roman", serif;
+  font-size: 17px;
+  text-align: center;
+  text-indent: 0;
+  line-height: 1.9;
+}
+
+.preview-body .equation-no {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.preview-body .equation-formula {
+  display: inline-block;
+  white-space: normal;
+  word-break: keep-all;
+}
+
+.preview-body .equation-formula sub,
+.preview-body .equation-formula sup {
+  font-size: 0.68em;
+  line-height: 0;
+}
+
+.preview-body .math-frac {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  margin: 0 0.16em;
+  vertical-align: middle;
+  line-height: 1.08;
+}
+
+.preview-body .math-frac > span:first-child {
+  min-width: 1.1em;
+  padding: 0 0.18em 0.12em;
+  border-bottom: 1px solid currentColor;
+}
+
+.preview-body .math-frac > span:last-child {
+  padding: 0.12em 0.18em 0;
+}
+
+.preview-body .math-radical {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.06em;
+}
+
+.preview-limit-notice {
+  margin: 22px 0 0;
+  padding: 14px 16px;
+  border: 1px dashed rgba(31, 94, 255, 0.32);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.78);
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.inline-preview-action {
+  margin-left: 10px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  background: rgba(31, 94, 255, 0.1);
+  color: var(--brand);
+  font-size: 13px;
+  box-shadow: none;
+}
+
+.preview-body table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 18px 0;
+  background: rgba(255, 255, 255, 0.88);
+}
+
+.preview-body th,
+.preview-body td {
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(22, 32, 51, 0.12);
+  font-size: 14px;
+  line-height: 1.6;
+  text-align: center;
+}
+
+.preview-body th {
+  border-top: 2px solid rgba(22, 32, 51, 0.7);
+  border-bottom: 1px solid rgba(22, 32, 51, 0.35);
+  background: rgba(246, 249, 255, 0.95);
+}
+
+.preview-body tr:last-child td {
+  border-bottom: 2px solid rgba(22, 32, 51, 0.7);
+}
+
+.preview-body .inline-math,
+.preview-body .inline-code {
+  display: inline-block;
+  padding: 0.05em 0.4em;
+  border-radius: 8px;
+  background: rgba(31, 94, 255, 0.08);
+  color: #14336d;
+  text-indent: 0;
+  font-family: "Cambria Math", "JetBrains Mono", monospace;
+}
+
+.preview-body .citation {
+  vertical-align: super;
+  font-size: 0.8em;
+  color: var(--brand);
+}
+
+.preview-body .code-block {
+  margin: 16px 0;
+  padding: 14px 16px;
+  border-radius: 16px;
+  background: #192130;
+  color: #f2f6ff;
+  font-family: "JetBrains Mono", "Cascadia Code", monospace;
+  font-size: 13px;
+  line-height: 1.7;
+  overflow-x: auto;
+}
+
+.empty-state {
+  display: grid;
+  place-items: center;
+  min-height: 760px;
+  text-align: center;
+  color: var(--muted);
+}
+
+.empty-state h3 {
+  margin: 0 0 10px;
+  font-size: 28px;
+}
+
+.empty-state p {
+  max-width: 420px;
+  margin: 0;
+  text-indent: 0;
+}
+
+@media (max-width: 1180px) {
+  .workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .preview-card {
+    position: static;
+  }
+
+  .preview-body {
+    min-height: 520px;
+  }
+}
+
+@media (max-width: 720px) {
+  .shell {
+    padding: 18px 14px 30px;
+  }
+
+  .hero {
+    display: block;
+  }
+
+  .hero-badges {
+    justify-content: flex-start;
+    margin-top: 16px;
+  }
+
+  .config-row,
+  .share-row,
+  .toolbar,
+  .section-head {
+    display: grid;
+  }
+
+  .preview-body {
+    padding: 18px;
+  }
+
+  textarea {
+    min-height: 320px;
+  }
+}

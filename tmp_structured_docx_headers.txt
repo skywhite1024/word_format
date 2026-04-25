@@ -1,0 +1,17 @@
+HTTP/1.1 200 Connection established
+
+HTTP/1.1 200 OK
+Date: Sat, 25 Apr 2026 17:48:43 GMT
+Content-Type: application/vnd.openxmlformats-officedocument.wordprocessingml.document
+Content-Length: 35156
+Connection: keep-alive
+Cache-Control: no-store
+Content-Disposition: attachment; filename="formatted_1777139323480.docx"
+X-Format-Engine: preview
+X-Format-Fallback: 
+Report-To: {"group":"cf-nel","max_age":604800,"endpoints":[{"url":"https://a.nel.cloudflare.com/report/v4?s=l5XfGy1JjH2vxObmberwMwegxwTukrgjdjrX%2BFZJgY0DAcXALrI%2Bu%2BDTs2YyeljX1K06%2BsmfK7TFcWwmg21h0YBx6Xz16YnRu4Um6D0MhN7U8GFxCW7%2FucIf4JeP7OmqXV2hzDgo7qVTeCOtOPPdXuPVbQA9gs7q"}]}
+Nel: {"report_to":"cf-nel","success_fraction":0.0,"max_age":604800}
+Server: cloudflare
+CF-RAY: 9f1f2e234d3762dc-SIN
+alt-svc: h3=":443"; ma=86400
+

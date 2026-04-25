@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>文档格式解析 所见即所得</title>
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="hero">
+        <div class="hero-copy">
+          <p class="eyebrow">Word 格式升级版</p>
+          <h1>文档格式解析 所见即所得</h1>
+          <p class="hero-text">
+            面向 DeepSeek、豆包、ChatGPT、Gemini 等 AI 生成内容，支持结构识别、分享链接导入、深度修复、Word 导出与预览式 PDF 导出。
+          </p>
+        </div>
+        <div class="hero-badges">
+          <span>Markdown 转 Word</span>
+          <span>ChatGPT / Gemini 分享导入</span>
+          <span>论文 / 公文模板</span>
+        </div>
+      </header>
+
+      <section class="workspace">
+        <section class="editor-panel">
+          <div class="card config-card">
+            <div class="config-row">
+              <label class="field">
+                <span>模板策略</span>
+                <select id="mode">
+                  <option value="auto">自动识别</option>
+                  <option value="official">公文模式</option>
+                  <option value="thesis">论文模式</option>
+                </select>
+              </label>
+
+              <label class="check">
+                <input id="useLlm" type="checkbox" checked />
+                <span>启用大模型智能识别</span>
+              </label>
+
+              <label class="check">
+                <input id="mathItalic" type="checkbox" checked />
+                <span>公式变量斜体</span>
+              </label>
+            </div>
+          </div>
+
+          <div class="card share-card">
+            <div class="section-head">
+              <div>
+                <h2>分享链接导入</h2>
+                <p>将 ChatGPT / Gemini 的公开分享链接粘贴到这里，避免和正文输入混在一起。</p>
+              </div>
+              <button id="importShareBtn" type="button" class="secondary-btn">导入分享链接</button>
+            </div>
+            <div class="share-row">
+              <input
+                id="shareLink"
+                type="url"
+                placeholder="粘贴 ChatGPT 或 Gemini 的公开分享链接，例如 https://gemini.google.com/share/..."
+              />
+            </div>
+          </div>
+
+          <div class="card editor-card">
+            <div class="section-head">
+              <div>
+                <h2>原始内容输入</h2>
+                <p>粘贴 AI 返回的正文、Markdown、表格或公式文本。分享链接请走上方单独输入框。</p>
+              </div>
+              <div class="meta-inline">
+                <span id="inputCounter">0 字</span>
+              </div>
+            </div>
+
+            <label class="field">
+              <span>正文内容</span>
+              <textarea
+                id="inputText"
+                placeholder="在这里粘贴 DeepSeek、豆包、Claude、ChatGPT 等生成的内容。建议优先使用平台自带复制按钮；若是 ChatGPT / Gemini，请使用上方分享链接导入。"
+              ></textarea>
+            </label>
+
+            <div class="toolbar">
+              <button id="formatBtn" type="button">刷新预览</button>
+              <button id="repairBtn" type="button" class="secondary-btn">深度乱码修复</button>
+              <button id="downloadBtn" type="button" class="secondary-btn">导出 Word</button>
+              <button id="exportPdfBtn" type="button" class="ghost-btn">导出 PDF</button>
+              <button id="clearBtn" type="button" class="ghost-btn">清空内容</button>
+            </div>
+          </div>
+
+          <div class="note-card">
+            <p>
+              当前版本保留现有 Worker 的结构化与 DOCX 主链路，并新增公开分享页导入与修复工具。若分享页平台调整了 HTML 结构，导入可能需要同步更新解析规则。
+            </p>
+          </div>
+        </section>
+
+        <section class="preview-panel">
+          <div class="card preview-card">
+            <div class="section-head">
+              <div>
+                <h2>预览结果</h2>
+                <p id="statusText">等待输入内容...</p>
+              </div>
+            </div>
+
+            <div id="stats" class="stats-grid">
+              <span class="stat-pill">模式: 未识别</span>
+              <span class="stat-pill">标题: 无</span>
+              <span class="stat-pill">段落数: 0</span>
+              <span class="stat-pill">标题数: 0</span>
+              <span class="stat-pill">参考文献: 0</span>
+              <span class="stat-pill">引擎: rule</span>
+            </div>
+
+            <div id="previewMeta" class="preview-meta"></div>
+            <article id="preview" class="preview-body">
+              <div class="empty-state">
+                <h3>暂无预览内容</h3>
+                <p>输入正文或导入分享链接后，右侧会展示接近最终 Word 的结构化预览。</p>
+              </div>
+            </article>
+          </div>
+        </section>
+      </section>
+    </main>
+
+    <script src="/app.js" type="module"></script>
+  </body>
+</html>

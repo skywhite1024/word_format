@@ -1,0 +1,1 @@
+﻿{"useLlm":false,"mode":"official","text":"# Gemini 表格恢复测试\n\n| 损失函数名称 | 数学表达式 | 适用场景 || --- | --- | --- || 均方误差 (MSE) | $L = (y - \\hat{y})^2$ | 回归问题，对离群点敏感 || 平均绝对误差 (MAE) | $L = | y - \\hat{y} || 交叉熵 (Cross-Entropy) | $L = -\\sum y \\log(\\hat{y})$ | 分类问题，衡量概率分布的差异 || Hinge Loss | $L = \\max(0, 1 - y \\cdot \\hat{y})$ | SVM（支持向量机），强调“硬分类” |Export to Sheets"}
