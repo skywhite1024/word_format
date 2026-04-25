@@ -72,7 +72,7 @@ describe("worker api", () => {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        text: "第一行\\n\\n第二行\\u4E2D\\u6587",
+        text: "第一行\\n\\n第二行\\u4E2D\\u6587\\n\\n[\\n\\text{数据} \\rightarrow \\text{模型}\\n]",
       }),
     });
 
@@ -85,6 +85,9 @@ describe("worker api", () => {
     expect(data.changed).toBe(true);
     expect(data.text).toContain("第一行");
     expect(data.text).toContain("第二行中文");
+    expect(data.text).toContain("\\text{数据}");
+    expect(data.text).toContain("\\rightarrow");
+    expect(data.text).not.toContain("\nightarrow");
   });
 
   it("should import gemini share content from reader markdown", async () => {
@@ -386,6 +389,10 @@ describe("worker api", () => {
       "Thought for 31s",
       "",
       "这是导入后的正文内容。",
+      "",
+      "[",
+      "\\text{数据} \\rightarrow \\text{模型} \\rightarrow \\text{评估}",
+      "]",
     ].join("\n");
     vi.stubGlobal(
       "fetch",
@@ -420,6 +427,9 @@ describe("worker api", () => {
       expect(data.text).toContain("## ChatGPT");
       expect(data.text).toContain("请输出一个摘要");
       expect(data.text).toContain("这是导入后的正文内容。");
+      expect(data.text).toContain("\\text{数据}");
+      expect(data.text).toContain("\\rightarrow");
+      expect(data.text).not.toContain("\nightarrow");
     } finally {
       vi.stubGlobal("fetch", originalFetch);
     }

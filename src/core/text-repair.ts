@@ -6,20 +6,37 @@ function decodeUnicodeEscapes(text: string): string {
   );
 }
 
+export function protectLatexCommands(text: string): { text: string; restore: (value: string) => string } {
+  const preserved: string[] = [];
+  const protectedText = text.replace(/\\(?!u[0-9a-fA-F]{4})(?![nrt]\b)([A-Za-z]+)/g, (match) => {
+    const index = preserved.push(match) - 1;
+    return `__LATEX_CMD_${index}__`;
+  });
+
+  return {
+    text: protectedText,
+    restore: (value: string) => value.replace(/__LATEX_CMD_(\d+)__/g, (_match, index: string) => preserved[Number(index)] ?? ""),
+  };
+}
+
 function normalizeEscapedWhitespace(text: string): string {
   let repaired = text;
   const escapedNewlineCount = (repaired.match(/\\n/g) ?? []).length;
   const realNewlineCount = (repaired.match(/\n/g) ?? []).length;
 
   if (escapedNewlineCount > 0 && escapedNewlineCount >= realNewlineCount) {
-    repaired = repaired
-      .replace(/\\r\\n/g, "\n")
-      .replace(/\\n/g, "\n")
-      .replace(/\\r/g, "\n");
+    const { text: protectedText, restore } = protectLatexCommands(repaired);
+    repaired = restore(
+      protectedText
+        .replace(/\\r\\n/g, "\n")
+        .replace(/\\n/g, "\n")
+        .replace(/\\r/g, "\n"),
+    );
   }
 
   if (/\\t/.test(repaired)) {
-    repaired = repaired.replace(/\\t/g, "\t");
+    const { text: protectedText, restore } = protectLatexCommands(repaired);
+    repaired = restore(protectedText.replace(/\\t/g, "\t"));
   }
 
   return repaired;
