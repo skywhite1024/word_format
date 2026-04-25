@@ -27,6 +27,8 @@ let previewTimer = null;
 let lastStructured = null;
 let lastMeta = null;
 let lastImport = null;
+let previewExpanded = false;
+const DEFAULT_PREVIEW_BLOCK_LIMIT = 220;
 
 function escapeHtml(text) {
   return text
@@ -490,7 +492,7 @@ function buildTableHtml(rows) {
   return `<table>${thead}${tbody}</table>`;
 }
 
-function renderStructuredPreview(structured) {
+function renderStructuredPreview(structured, options = {}) {
   if (!structured || !Array.isArray(structured.blocks) || structured.blocks.length === 0) {
     return EMPTY_PREVIEW_HTML;
   }
@@ -505,7 +507,13 @@ function renderStructuredPreview(structured) {
     pieces.push(`<h1>${formatInlineContent(structured.title)}</h1>`);
   }
 
-  for (const block of structured.blocks) {
+  const expanded = options.expanded === true;
+  const shouldLimit = !expanded && structured.blocks.length > DEFAULT_PREVIEW_BLOCK_LIMIT;
+  const visibleBlocks = shouldLimit
+    ? structured.blocks.slice(0, DEFAULT_PREVIEW_BLOCK_LIMIT)
+    : structured.blocks;
+
+  for (const block of visibleBlocks) {
     const text = (block.text || "").trim();
     if (!text) continue;
 
@@ -565,19 +573,39 @@ function renderStructuredPreview(structured) {
     pieces.push(`<p>${formatInlineContent(text)}</p>`);
   }
 
+  if (shouldLimit) {
+    const hiddenCount = structured.blocks.length - visibleBlocks.length;
+    pieces.push(`
+      <div class="preview-limit-notice paragraph-no-indent">
+        为保持页面滚动流畅，当前仅显示前 ${visibleBlocks.length} 个结构块，已隐藏 ${hiddenCount} 个结构块；Word/PDF 导出仍包含全文。
+        <button type="button" class="inline-preview-action" data-action="expand-preview">显示完整预览</button>
+      </div>
+    `);
+  }
+
   return pieces.join("");
+}
+
+function paintPreview() {
+  if (!lastStructured) {
+    preview.innerHTML = EMPTY_PREVIEW_HTML;
+    return;
+  }
+  preview.innerHTML = renderStructuredPreview(lastStructured, { expanded: previewExpanded });
 }
 
 function renderPreview(structured, meta) {
   lastStructured = structured;
   lastMeta = meta;
+  previewExpanded = false;
   setStats(structured, meta);
-  preview.innerHTML = renderStructuredPreview(structured);
+  paintPreview();
 }
 
 function createEmptyPreview() {
   lastStructured = null;
   lastMeta = null;
+  previewExpanded = false;
   setStats(null, null);
   previewMeta.innerHTML = "";
   preview.innerHTML = EMPTY_PREVIEW_HTML;
@@ -741,6 +769,10 @@ function exportPdf() {
     return;
   }
 
+  const previewHtml = lastStructured
+    ? renderStructuredPreview(lastStructured, { expanded: true })
+    : preview.innerHTML;
+
   printWindow.document.write(`
     <!doctype html>
     <html lang="zh-CN">
@@ -874,7 +906,7 @@ function exportPdf() {
         </style>
       </head>
       <body>
-        <article>${preview.innerHTML}</article>
+        <article>${previewHtml}</article>
       </body>
     </html>
   `);
@@ -915,6 +947,15 @@ exportPdfBtn.addEventListener("click", () => {
 
 clearBtn.addEventListener("click", () => {
   clearContent();
+});
+
+preview.addEventListener("click", (event) => {
+  const target = event.target instanceof Element ? event.target : null;
+  if (!target?.closest("[data-action='expand-preview']")) {
+    return;
+  }
+  previewExpanded = true;
+  paintPreview();
 });
 
 inputText.addEventListener("input", () => {

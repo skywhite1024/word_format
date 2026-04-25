@@ -15,7 +15,9 @@ function createElementStub() {
   };
 }
 
-function loadPreviewContext(): { renderStructuredPreview: (structured: unknown) => string } {
+function loadPreviewContext(): {
+  renderStructuredPreview: (structured: unknown, options?: { expanded?: boolean }) => string;
+} {
   const code = fs.readFileSync(new URL("../public/app.js", import.meta.url), "utf8");
   const elements = new Map<string, ReturnType<typeof createElementStub>>();
   const context = vm.createContext({
@@ -38,7 +40,9 @@ function loadPreviewContext(): { renderStructuredPreview: (structured: unknown) 
   });
 
   vm.runInContext(code, context);
-  return context as unknown as { renderStructuredPreview: (structured: unknown) => string };
+  return context as unknown as {
+    renderStructuredPreview: (structured: unknown, options?: { expanded?: boolean }) => string;
+  };
 }
 
 describe("preview ui", () => {
@@ -79,8 +83,42 @@ describe("preview ui", () => {
     const css = fs.readFileSync(new URL("../public/style.css", import.meta.url), "utf8");
 
     expect(css).not.toMatch(/\.preview-card\s*\{[^}]*position:\s*sticky/s);
+    expect(css).not.toContain("radial-gradient");
+    expect(css).not.toContain("blur(18px)");
     expect(css).toContain("content-visibility: auto");
     expect(css).toContain("contain-intrinsic-size");
+    expect(css).toMatch(/\.card\s*\{[^}]*backdrop-filter:\s*none/s);
     expect(css).toMatch(/\.preview-card\s*\{[^}]*backdrop-filter:\s*none/s);
+  });
+
+  it("should limit very large previews by default and allow full rendering on demand", () => {
+    const { renderStructuredPreview } = loadPreviewContext();
+    const blocks = Array.from({ length: 260 }, (_item, index) => ({
+      type: "paragraph",
+      level: 0,
+      text: index === 259 ? "hidden-tail-marker" : `正文 ${index + 1}`,
+    }));
+
+    const limitedHtml = renderStructuredPreview({
+      mode: "official",
+      title: "性能测试",
+      stats: { paragraphCount: blocks.length, headingCount: 0, referenceCount: 0 },
+      blocks,
+    });
+    const expandedHtml = renderStructuredPreview(
+      {
+        mode: "official",
+        title: "性能测试",
+        stats: { paragraphCount: blocks.length, headingCount: 0, referenceCount: 0 },
+        blocks,
+      },
+      { expanded: true },
+    );
+
+    expect(limitedHtml).toContain("preview-limit-notice");
+    expect(limitedHtml).toContain('data-action="expand-preview"');
+    expect(limitedHtml).not.toContain("hidden-tail-marker");
+    expect(expandedHtml).not.toContain("preview-limit-notice");
+    expect(expandedHtml).toContain("hidden-tail-marker");
   });
 });

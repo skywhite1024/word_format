@@ -11,7 +11,7 @@
   --brand-soft: rgba(31, 94, 255, 0.12);
   --success: #248a5c;
   --warning: #c87b16;
-  --shadow: 0 18px 60px rgba(28, 49, 87, 0.12);
+  --shadow: 0 10px 30px rgba(28, 49, 87, 0.08);
 }
 
 * {
@@ -27,10 +27,7 @@ body {
 body {
   color: var(--ink);
   font-family: "PingFang SC", "Microsoft YaHei", "Noto Sans SC", sans-serif;
-  background:
-    radial-gradient(circle at top left, rgba(54, 116, 255, 0.18), transparent 28%),
-    radial-gradient(circle at top right, rgba(214, 170, 65, 0.14), transparent 22%),
-    linear-gradient(180deg, #f7faff 0%, var(--bg) 42%, #eef4ff 100%);
+  background: linear-gradient(180deg, #f7faff 0%, var(--bg) 42%, #eef4ff 100%);
 }
 
 button,
@@ -91,8 +88,8 @@ textarea {
 .preview-chip {
   border: 1px solid var(--line);
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.72);
-  backdrop-filter: blur(18px);
+  background: rgba(255, 255, 255, 0.88);
+  backdrop-filter: none;
 }
 
 .hero-badges span {
@@ -117,8 +114,8 @@ textarea {
   margin-bottom: 18px;
   border: 1px solid var(--line);
   border-radius: 26px;
-  background: var(--surface);
-  backdrop-filter: blur(18px);
+  background: rgba(255, 255, 255, 0.96);
+  backdrop-filter: none;
   box-shadow: var(--shadow);
 }
 
@@ -443,6 +440,27 @@ button:disabled {
   display: inline-flex;
   align-items: baseline;
   gap: 0.06em;
+}
+
+.preview-limit-notice {
+  margin: 22px 0 0;
+  padding: 14px 16px;
+  border: 1px dashed rgba(31, 94, 255, 0.32);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.78);
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.inline-preview-action {
+  margin-left: 10px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  background: rgba(31, 94, 255, 0.1);
+  color: var(--brand);
+  font-size: 13px;
+  box-shadow: none;
 }
 
 .preview-body table {
