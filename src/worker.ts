@@ -19,6 +19,7 @@ interface RequestPayload {
   mode: Mode;
   useLlm: boolean;
   mathItalic: boolean;
+  structured?: StructuredDoc;
 }
 
 interface TextOnlyPayload {
@@ -75,6 +76,41 @@ function sanitizeMathItalic(input: unknown): boolean {
   return true;
 }
 
+function sanitizeStructuredPayload(input: unknown): StructuredDoc | undefined {
+  if (!input || typeof input !== "object") return undefined;
+  const value = input as Partial<StructuredDoc>;
+  if (!Array.isArray(value.blocks)) return undefined;
+
+  const mode = value.mode === "thesis" ? "thesis" : "official";
+  const blocks = value.blocks
+    .map((block) => {
+      if (!block || typeof block !== "object") return null;
+      const item = block as { type?: unknown; text?: unknown; level?: unknown };
+      const type = item.type === "heading" || item.type === "reference" ? item.type : "paragraph";
+      const text = typeof item.text === "string" ? item.text : "";
+      if (!text.trim()) return null;
+      const rawLevel = Number(item.level ?? 0);
+      const level = Number.isFinite(rawLevel) ? Math.max(0, Math.min(3, rawLevel)) : 0;
+      return { type, text, level };
+    })
+    .filter((block): block is StructuredDoc["blocks"][number] => block !== null);
+
+  if (blocks.length === 0) return undefined;
+
+  const fallbackStats = {
+    paragraphCount: blocks.filter((block) => block.type === "paragraph").length,
+    headingCount: blocks.filter((block) => block.type === "heading").length,
+    referenceCount: blocks.filter((block) => block.type === "reference").length,
+  };
+
+  return {
+    mode,
+    title: typeof value.title === "string" ? value.title : "",
+    blocks,
+    stats: value.stats ?? fallbackStats,
+  };
+}
+
 async function parsePayload(request: Request): Promise<RequestPayload | null> {
   try {
     const payload = (await request.json()) as {
@@ -82,6 +118,7 @@ async function parsePayload(request: Request): Promise<RequestPayload | null> {
       mode?: unknown;
       useLlm?: unknown;
       mathItalic?: unknown;
+      structured?: unknown;
     };
     const rawText = typeof payload.text === "string" ? payload.text : "";
     const text = sanitizeMarkdownText(rawText);
@@ -96,6 +133,7 @@ async function parsePayload(request: Request): Promise<RequestPayload | null> {
       mode: sanitizeMode(payload.mode),
       useLlm: sanitizeUseLlm(payload.useLlm),
       mathItalic: sanitizeMathItalic(payload.mathItalic),
+      structured: sanitizeStructuredPayload(payload.structured),
     };
   } catch (error) {
     if (error instanceof Error) {
@@ -195,7 +233,9 @@ export default {
         const payload = await parsePayload(request);
         if (!payload) return badRequest("text 不能为空");
 
-        const result = await buildStructuredResult(payload, env);
+        const result = payload.structured
+          ? { structured: payload.structured, engine: "preview" as const, fallbackReason: undefined }
+          : await buildStructuredResult(payload, env);
         const fileContent = await buildDocx(result.structured, {
           mathItalic: payload.mathItalic,
         });

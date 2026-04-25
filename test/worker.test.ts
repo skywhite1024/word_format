@@ -1,5 +1,6 @@
 ﻿import { describe, expect, it, vi } from "vitest";
 import { analyzeText } from "../src/core/analyzer";
+import JSZip from "jszip";
 import worker from "../src/worker";
 
 describe("worker api", () => {
@@ -44,6 +45,46 @@ describe("worker api", () => {
     expect(response.headers.get("Content-Type")).toContain("application/vnd.openxmlformats-officedocument.wordprocessingml.document");
     const bytes = new Uint8Array(await response.arrayBuffer());
     expect(bytes.byteLength).toBeGreaterThan(2000);
+  });
+
+  it("should export docx from preview structured payload without re-structuring", async () => {
+    const request = new Request("https://example.com/api/format/docx", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        mode: "official",
+        useLlm: true,
+        text: "这段原文不应进入导出。",
+        structured: {
+          mode: "official",
+          title: "预览结构导出",
+          blocks: [
+            {
+              type: "paragraph",
+              level: 0,
+              text: "| 损失函数名称 | 数学表达式 | 适用场景 || --- | --- | --- || 均方误差 | $L = (y - \\\\hat{y})^2$ | 回归问题 || 平均绝对误差 | $L = | y - \\\\hat{y} || 交叉熵 | $L = -\\\\sum y \\\\log(\\\\hat{y})$ | 分类问题 |Export to Sheets",
+            },
+          ],
+          stats: { paragraphCount: 1, headingCount: 0, referenceCount: 0 },
+        },
+      }),
+    });
+
+    const response = await worker.fetch(request, {
+      ASSETS: { fetch: async () => new Response("not found", { status: 404 }) },
+    } as any);
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("X-Format-Engine")).toBe("preview");
+    const bytes = await response.arrayBuffer();
+    const zip = await JSZip.loadAsync(bytes);
+    const documentXml = await zip.file("word/document.xml")?.async("string");
+    const docContent = documentXml ?? "";
+
+    expect(docContent).toContain("<w:tbl>");
+    expect(docContent).toContain("损失函数名称");
+    expect(docContent).not.toContain("这段原文不应进入导出");
+    expect(docContent).not.toContain("Export to Sheets");
   });
 
   it("should sanitize markdown input before analysis", async () => {

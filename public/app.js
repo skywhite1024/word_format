@@ -814,6 +814,7 @@ async function downloadDocx() {
         mode: modeSelect.value || "auto",
         useLlm: !!useLlmInput.checked,
         mathItalic: !!mathItalicInput.checked,
+        structured: lastStructured,
       }),
     });
 
