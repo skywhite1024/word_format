@@ -290,6 +290,7 @@ const PREVIEW_COMMAND_TEXT = {
 };
 
 const PREVIEW_IGNORED_COMMANDS = new Set(["left", "right", "big", "Big", "bigg", "Bigg", "quad", "qquad"]);
+const equationPreviewCache = new Map();
 
 function readPreviewGroup(text, start, open = "{", close = "}") {
   if (text[start] !== open) return null;
@@ -439,7 +440,17 @@ function renderEquationExpression(rawText) {
 }
 
 function formatEquationContent(text) {
-  return `<span class="equation-formula">${renderEquationExpression(text)}</span>`;
+  const key = text.replace(/\s+/g, " ").trim();
+  const cached = equationPreviewCache.get(key);
+  if (cached) {
+    return cached;
+  }
+  if (equationPreviewCache.size > 500) {
+    equationPreviewCache.clear();
+  }
+  const html = `<span class="equation-formula">${renderEquationExpression(text)}</span>`;
+  equationPreviewCache.set(key, html);
+  return html;
 }
 
 function formatInlineContent(text) {

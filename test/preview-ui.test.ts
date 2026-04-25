@@ -74,4 +74,13 @@ describe("preview ui", () => {
     expect(html).not.toContain("rightarrow");
     expect(html).not.toContain("ightarrow");
   });
+
+  it("should keep the large preview container cheap to scroll", () => {
+    const css = fs.readFileSync(new URL("../public/style.css", import.meta.url), "utf8");
+
+    expect(css).not.toMatch(/\.preview-card\s*\{[^}]*position:\s*sticky/s);
+    expect(css).toContain("content-visibility: auto");
+    expect(css).toContain("contain-intrinsic-size");
+    expect(css).toMatch(/\.preview-card\s*\{[^}]*backdrop-filter:\s*none/s);
+  });
 });
