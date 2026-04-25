@@ -665,9 +665,11 @@ async function fetchGeminiRpcMarkdown(
   const responseText = await fetchText(rpcUrl, {
     method: "POST",
     headers: {
+      Accept: "*/*",
       "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
+      Origin: baseOrigin,
       "X-Same-Domain": "1",
-      Referer: `${baseOrigin}/`,
+      Referer: `${baseOrigin}${url.pathname}`,
     },
     body: createGeminiRpcBody(shareId),
   }, { allowChallengeRetry: true });
