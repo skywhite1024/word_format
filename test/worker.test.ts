@@ -1,4 +1,5 @@
 ﻿import { describe, expect, it, vi } from "vitest";
+import { analyzeText } from "../src/core/analyzer";
 import worker from "../src/worker";
 
 describe("worker api", () => {
@@ -299,7 +300,7 @@ describe("worker api", () => {
               [
                 "rc_demo",
                 [
-                  "下面这份可以当作“机器学习公式总览”。\n\n1. **模型形式 \\(f_\\theta\\) 不同**\n2. **损失函数 \\(L\\) 不同**\n\n\\[\n\\hat{y} = w^T x + b\n\\]",
+                  "下面这份可以当作“机器学习公式总览”。\n\n1. **模型形式 \\(f_\\theta\\) 不同**\n2. **损失函数 \\(L\\) 不同**\n\n### 线性回归\n* **假设函数:** $$y = w^T x + b$$\n    其中 $w$ 是权重向量，$b$ 是偏置。\n* **损失函数 (MSE):**\n    $$J(w, b) = \\frac{1}{2m} \\sum_{i=1}^{m} (h_w(x^{(i)}) - y^{(i)})^2$$\n    它衡量预测值与真实值之间的距离。\n\n\\[\n\\hat{y} = w^T x + b\n\\]",
                 ],
               ],
             ],
@@ -360,6 +361,12 @@ describe("worker api", () => {
       expect(data.text).toContain("模型形式");
       expect(data.text).toContain("\\theta");
       expect(data.text).toContain("\\hat{y} = w^T x + b");
+      expect(data.text).toContain("**假设函数:**\n\n$$y = w^T x + b$$");
+      expect(data.text).toContain("**损失函数 (MSE):**\n\n$$J(w, b) = \\frac{1}{2m}");
+
+      const structured = analyzeText(data.text, "auto");
+      expect(structured.blocks.some((block) => block.text === "$$y = w^T x + b$$")).toBe(true);
+      expect(structured.blocks.some((block) => block.text.startsWith("$$J(w, b) = \\frac{1}{2m}"))).toBe(true);
       expect(vi.mocked(globalThis.fetch).mock.calls[0]?.[0]).toBe("https://bard.google.com/");
       expect(vi.mocked(globalThis.fetch).mock.calls[1]?.[0]).toContain(
         "https://bard.google.com/_/BardChatUi/data/batchexecute",

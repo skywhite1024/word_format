@@ -66,6 +66,71 @@ function expandLiteralLineBreaks(text: string): string {
   return restore(protectedText.replace(/\\r\\n/g, "\n").replace(/\\n/g, "\n").replace(/\\r/g, "\n"));
 }
 
+function splitDisplayMathLine(line: string): string[] {
+  if (!line.includes("$$") || line.trim().startsWith("|")) {
+    return [line];
+  }
+
+  const parts: string[] = [];
+  let cursor = 0;
+  const pattern = /\$\$([\s\S]*?)\$\$/g;
+  for (const match of line.matchAll(pattern)) {
+    const start = match.index ?? 0;
+    const end = start + match[0].length;
+    const before = line.slice(cursor, start).trimEnd();
+    if (before.trim()) {
+      parts.push(before);
+    }
+    const formula = match[1]?.trim() ?? "";
+    if (formula) {
+      parts.push(`$$${formula}$$`);
+    }
+    cursor = end;
+  }
+
+  const after = line.slice(cursor).trimStart();
+  if (after.trim()) {
+    parts.push(after);
+  }
+
+  return parts.length > 0 ? parts : [line];
+}
+
+function normalizeImportedMarkdownLayout(text: string): string {
+  const output: string[] = [];
+  const pushBlank = () => {
+    if (output.length > 0 && output[output.length - 1] !== "") {
+      output.push("");
+    }
+  };
+
+  for (const line of text.split("\n")) {
+    const parts = splitDisplayMathLine(line);
+    for (const part of parts) {
+      const trimmed = part.trim();
+      if (!trimmed) {
+        pushBlank();
+        continue;
+      }
+      if (
+        /^\$\$[\s\S]+\$\$$/.test(trimmed) ||
+        trimmed === "[" ||
+        trimmed === "]" ||
+        trimmed === "\\[" ||
+        trimmed === "\\]"
+      ) {
+        pushBlank();
+        output.push(trimmed);
+        output.push("");
+      } else {
+        output.push(part.trimEnd());
+      }
+    }
+  }
+
+  return output.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
 function normalizeImportText(title: string, sections: string[]): string {
   const uniqueSections: string[] = [];
   const seen = new Set<string>();
@@ -80,7 +145,7 @@ function normalizeImportText(title: string, sections: string[]): string {
       .replace(/\\r\\n/g, "\n")
       .replace(/\\n/g, "\n")
       .replace(/\\r/g, "\n");
-    const trimmed = restore(deepRepairText(escapedWhitespaceNormalized));
+    const trimmed = normalizeImportedMarkdownLayout(restore(deepRepairText(escapedWhitespaceNormalized)));
     if (!trimmed) continue;
     if (seen.has(trimmed)) continue;
     seen.add(trimmed);
