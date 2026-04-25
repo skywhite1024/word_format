@@ -190,6 +190,131 @@ function htmlToVisibleLines(html: string): string[] {
     .filter(Boolean);
 }
 
+function extractHtmlAttribute(tag: string, name: string): string {
+  const match = tag.match(new RegExp(`\\b${name}=(["'])(.*?)\\1`, "i"));
+  return match?.[2] ? decodeHtmlEntities(match[2]) : "";
+}
+
+function hasHtmlClass(tag: string, className: string): boolean {
+  return extractHtmlAttribute(tag, "class").split(/\s+/).includes(className);
+}
+
+function findClosingTagEnd(html: string, tagName: string, fromIndex: number): number {
+  const tagPattern = new RegExp(`<${tagName}\\b[^>]*>|<\\/${tagName}\\s*>`, "gi");
+  tagPattern.lastIndex = fromIndex;
+  let depth = 1;
+  for (let match = tagPattern.exec(html); match; match = tagPattern.exec(html)) {
+    if (match[0].startsWith("</")) {
+      depth -= 1;
+      if (depth === 0) {
+        return tagPattern.lastIndex;
+      }
+    } else {
+      depth += 1;
+    }
+  }
+  return fromIndex;
+}
+
+function replaceDataMathElements(html: string, className: string, format: (math: string) => string): string {
+  const openTagPattern = /<(span|div)\b[^>]*>/gi;
+  let output = "";
+  let cursor = 0;
+
+  for (let match = openTagPattern.exec(html); match; match = openTagPattern.exec(html)) {
+    const [tag, tagName] = match;
+    if (!hasHtmlClass(tag, className)) continue;
+
+    const math = extractHtmlAttribute(tag, "data-math").trim();
+    if (!math) continue;
+
+    const start = match.index;
+    const end = findClosingTagEnd(html, tagName, openTagPattern.lastIndex);
+    output += html.slice(cursor, start);
+    output += format(math);
+    cursor = end;
+    openTagPattern.lastIndex = end;
+  }
+
+  return output + html.slice(cursor);
+}
+
+function htmlInlineToMarkdown(html: string): string {
+  return decodeHtmlEntities(
+    html
+      .replace(/<(b|strong)\b[^>]*>([\s\S]*?)<\/\1>/gi, "**$2**")
+      .replace(/<(i|em)\b[^>]*>([\s\S]*?)<\/\1>/gi, "*$2*")
+      .replace(/<br\s*\/?>/gi, "\n")
+      .replace(/<[^>]+>/g, " "),
+  )
+    .replace(/\s+/g, " ")
+    .replace(/\s+([，。；：、,.!?！？])/g, "$1")
+    .trim();
+}
+
+function htmlTableToMarkdown(tableHtml: string): string {
+  const rows = [...tableHtml.matchAll(/<tr\b[^>]*>([\s\S]*?)<\/tr>/gi)]
+    .map((rowMatch) =>
+      [...rowMatch[1].matchAll(/<t[hd]\b[^>]*>([\s\S]*?)<\/t[hd]>/gi)]
+        .map((cellMatch) => htmlInlineToMarkdown(cellMatch[1]).replace(/\|/g, "\\|")),
+    )
+    .filter((cells) => cells.length > 0);
+
+  if (rows.length === 0) return "";
+
+  const width = Math.max(...rows.map((row) => row.length));
+  const normalizeRow = (row: string[]) => {
+    const cells = [...row, ...Array.from({ length: width - row.length }, () => "")];
+    return `| ${cells.join(" | ")} |`;
+  };
+
+  return [normalizeRow(rows[0]), normalizeRow(Array.from({ length: width }, () => "---")), ...rows.slice(1).map(normalizeRow)].join("\n");
+}
+
+function geminiRenderedHtmlToMarkdown(fragment: string): string {
+  let html = replaceDataMathElements(fragment, "math-block", (math) => `\n\n$$${math}$$\n\n`);
+  html = replaceDataMathElements(html, "math-inline", (math) => `$${math}$`);
+  html = html.replace(/<table\b[\s\S]*?<\/table>/gi, (table) => `\n\n${htmlTableToMarkdown(table)}\n\n`);
+  html = html.replace(/<h([1-6])\b[^>]*>([\s\S]*?)<\/h\1>/gi, (_match, level: string, inner: string) => {
+    const depth = Math.min(Math.max(Number(level), 1), 6);
+    const text = htmlInlineToMarkdown(inner);
+    return text ? `\n\n${"#".repeat(depth)} ${text}\n\n` : "\n\n";
+  });
+  html = html.replace(/<p\b[^>]*>([\s\S]*?)<\/p>/gi, (_match, inner: string) => {
+    const text = htmlInlineToMarkdown(inner);
+    return text ? `\n\n${text}\n\n` : "\n\n";
+  });
+  html = html.replace(/<li\b[^>]*>/gi, "\n").replace(/<\/li>/gi, "\n");
+
+  return decodeHtmlEntities(html.replace(/<[^>]+>/g, "\n"))
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function parseGeminiRenderedHtml(html: string, fallbackTitle = ""): { title: string; text: string } | null {
+  const title =
+    htmlInlineToMarkdown(html.match(/<h1\b[^>]*>([\s\S]*?)<\/h1>/i)?.[1] ?? "").replace(/\*\*/g, "") ||
+    fallbackTitle;
+  const prompt = htmlInlineToMarkdown(
+    html.match(/screen-reader-user-query-label[\s\S]*?<\/span>\s*<p\b[^>]*>([\s\S]*?)<\/p>/i)?.[1] ?? "",
+  );
+  const message = html.match(/<message-content\b[\s\S]*?<\/message-content>/i)?.[0] ?? "";
+  const answer = geminiRenderedHtmlToMarkdown(message);
+  if (!answer || answer.length < 80) {
+    return null;
+  }
+
+  const sections = prompt ? [`## 你说\n${prompt}`, `## Gemini\n${answer}`] : [`## Gemini\n${answer}`];
+  return {
+    title,
+    text: normalizeImportText(title, sections),
+  };
+}
+
 function isPlausibleChatGptPromptCandidate(text: string): boolean {
   const trimmed = text.trim();
   if (!trimmed || trimmed.length < 4 || trimmed.length > 2_000) return false;
@@ -893,6 +1018,28 @@ async function importGeminiShare(url: URL): Promise<ImportedShareDocument> {
     const detail = error instanceof Error ? error.message : "";
     failures.push(detail ? `${step}:${detail}` : step);
   };
+
+  try {
+    const renderedHtml = await fetchTextViaJinaReader(normalizedUrl.href, {
+      headers: {
+        "x-respond-with": "html",
+      },
+    });
+    const parsed = parseGeminiRenderedHtml(renderedHtml);
+    if (parsed?.text && !isLikelyInvalidShareBody(parsed.text)) {
+      const finalized = finalizeGeminiImportedText(parsed.title, parsed.text);
+      return {
+        source: "gemini",
+        title: finalized.title,
+        text: finalized.text,
+        url: url.href,
+      };
+    }
+    failures.push("reader-html-invalid");
+  } catch (error) {
+    pushFailure("reader-html-fetch", error);
+    // Jina 的 markdown/text 会丢公式；html 模式失败后再尝试官方 RPC。
+  }
 
   for (const baseOrigin of getGeminiRpcOrigins(url)) {
     const rpcUrl = buildGeminiShareUrl(url, baseOrigin);
