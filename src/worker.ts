@@ -29,6 +29,8 @@ interface ShareUrlPayload {
   url: string;
 }
 
+const SHARE_IMPORT_CACHE_MAX_AGE_SECONDS = 86_400;
+
 function jsonResponse(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
     status,
@@ -36,6 +38,12 @@ function jsonResponse(data: unknown, status = 200): Response {
       "Content-Type": "application/json; charset=utf-8",
       "Cache-Control": "no-store",
     },
+  });
+}
+
+function getShareImportCacheKey(url: string): Request {
+  return new Request(`https://word-format.cache/import/share?url=${encodeURIComponent(url)}`, {
+    method: "GET",
   });
 }
 
@@ -235,8 +243,18 @@ export default {
         const payload = await parseShareUrlPayload(request);
         if (!payload) return badRequest("url 不能为空");
 
+        const cacheStorage =
+          typeof caches === "undefined" ? null : (caches as CacheStorage & { default?: Cache });
+        const cache = cacheStorage?.default ?? null;
+        const cacheKey = getShareImportCacheKey(payload.url);
+        const cached = await cache?.match(cacheKey);
+        if (cached) return cached;
+
         const imported = await importSharedConversation(payload.url);
-        return jsonResponse(imported);
+        const response = jsonResponse(imported);
+        response.headers.set("Cache-Control", `public, max-age=${SHARE_IMPORT_CACHE_MAX_AGE_SECONDS}`);
+        await cache?.put(cacheKey, response.clone());
+        return response;
       } catch (error) {
         const message = error instanceof Error ? error.message : "分享链接导入失败";
         return badRequest(message);
