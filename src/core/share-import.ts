@@ -785,6 +785,18 @@ function buildBardShareUrl(url: URL): URL {
   return normalized;
 }
 
+function buildGeminiShareUrl(url: URL, baseOrigin: string): URL {
+  const normalized = new URL(url.href);
+  normalized.hostname = new URL(baseOrigin).hostname;
+  return normalized;
+}
+
+function getGeminiRpcOrigins(url: URL): string[] {
+  const primary = `https://${url.hostname}`;
+  const origins = [primary, "https://gemini.google.com", "https://bard.google.com"];
+  return [...new Set(origins)];
+}
+
 async function fetchText(
   url: string,
   init: RequestInit = {},
@@ -818,9 +830,9 @@ async function fetchTextViaCodeTabs(url: string, init: RequestInit = {}): Promis
   return fetchText(buildCodeTabsProxyUrl(url), init);
 }
 
-async function fetchGeminiBuildLabelForShare(url: URL): Promise<string> {
+async function fetchGeminiBuildLabelForShare(url: URL, baseOrigin: string): Promise<string> {
   try {
-    return await fetchGeminiBuildLabel("https://bard.google.com");
+    return await fetchGeminiBuildLabel(baseOrigin);
   } catch {
     const proxiedHtml = await fetchTextViaCodeTabs(url.href);
     const buildLabel = extractGeminiBuildLabel(proxiedHtml);
@@ -858,22 +870,25 @@ async function importGeminiShare(url: URL): Promise<ImportedShareDocument> {
     failures.push(detail ? `${step}:${detail}` : step);
   };
 
-  try {
-    const buildLabel = await fetchGeminiBuildLabelForShare(normalizedUrl);
-    const rpcParsed = await fetchGeminiRpcMarkdown(normalizedUrl, buildLabel, "https://bard.google.com");
-    if (rpcParsed?.text) {
-      const finalized = finalizeGeminiImportedText(rpcParsed.title, rpcParsed.text);
-      return {
-        source: "gemini",
-        title: finalized.title,
-        text: finalized.text,
-        url: url.href,
-      };
+  for (const baseOrigin of getGeminiRpcOrigins(url)) {
+    const rpcUrl = buildGeminiShareUrl(url, baseOrigin);
+    try {
+      const buildLabel = await fetchGeminiBuildLabelForShare(rpcUrl, baseOrigin);
+      const rpcParsed = await fetchGeminiRpcMarkdown(rpcUrl, buildLabel, baseOrigin);
+      if (rpcParsed?.text) {
+        const finalized = finalizeGeminiImportedText(rpcParsed.title, rpcParsed.text);
+        return {
+          source: "gemini",
+          title: finalized.title,
+          text: finalized.text,
+          url: url.href,
+        };
+      }
+      failures.push(`rpc-empty:${baseOrigin}`);
+    } catch (error) {
+      pushFailure(`rpc-fetch:${baseOrigin}`, error);
+      // Gemini RPC 在部分运行时会按域名限流，继续尝试另一个官方域名。
     }
-    failures.push("rpc-empty");
-  } catch (error) {
-    pushFailure("rpc-fetch", error);
-    // Bard RPC 失败后退回阅读代理。
   }
 
   try {
