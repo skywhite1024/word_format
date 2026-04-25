@@ -435,6 +435,35 @@ describe("docx-builder", () => {
     expect(docContent).not.toContain("---");
   });
 
+  it("should recover imported Gemini table rows with broken absolute-value math", async () => {
+    const structured: StructuredDoc = {
+      mode: "official",
+      title: "Gemini 表格恢复测试",
+      blocks: [
+        {
+          type: "paragraph",
+          level: 0,
+          text:
+            "| 损失函数名称 | 数学表达式 | 适用场景 || --- | --- | --- || 均方误差 (MSE) | $L = (y - \\hat{y})^2$ | 回归问题，对离群点敏感 || 平均绝对误差 (MAE) | $L = | y - \\hat{y} || 交叉熵 (Cross-Entropy) | $L = -\\sum y \\log(\\hat{y})$ | 分类问题，衡量概率分布的差异 || Hinge Loss | $L = \\max(0, 1 - y \\cdot \\hat{y})$ | SVM（支持向量机），强调“硬分类” |Export to Sheets",
+        },
+      ],
+      stats: { paragraphCount: 1, headingCount: 0, referenceCount: 0 },
+    };
+
+    const bytes = await buildDocx(structured);
+    const zip = await JSZip.loadAsync(bytes);
+    const documentXml = await zip.file("word/document.xml")?.async("string");
+    const docContent = documentXml ?? "";
+
+    expect(docContent).toContain("<w:tbl>");
+    expect(docContent).toContain("损失函数名称");
+    expect(docContent).toContain("平均绝对误差");
+    expect(docContent).toContain("交叉熵");
+    expect(docContent).toContain("<m:oMath");
+    expect(docContent).not.toContain("| 损失函数名称 |");
+    expect(docContent).not.toContain("Export to Sheets");
+  });
+
   it("should support math italic toggle off by forcing normal math run", async () => {
     const structured: StructuredDoc = {
       mode: "official",

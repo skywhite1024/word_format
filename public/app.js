@@ -154,7 +154,8 @@ function splitTableCells(rawRow) {
       continue;
     }
 
-    if (ch === "|" && !inMath) {
+    const hasClosingDollar = inMath && row.indexOf("$", cursor + 1) >= 0;
+    if (ch === "|" && (!inMath || !hasClosingDollar)) {
       const value = cell.trim();
       if (value) {
         cells.push(value);
@@ -174,12 +175,46 @@ function splitTableCells(rawRow) {
   return cells;
 }
 
+function countDollarSigns(text) {
+  return (text.match(/(?<!\\)\$/g) || []).length;
+}
+
+function looksLikeMathTableFragment(text) {
+  const trimmed = text.trim();
+  if (!trimmed) return false;
+  if (/[\u4e00-\u9fff]{2,}/.test(trimmed)) return false;
+  return /\\[A-Za-z]+|[_^=+\-*/]|[A-Za-z]\s*[-+]/.test(trimmed);
+}
+
+function normalizeTableCell(cell) {
+  const trimmed = cell.trim();
+  return countDollarSigns(trimmed) % 2 === 1 ? `${trimmed}$` : trimmed;
+}
+
+function normalizeTableRowWidth(cells, columnCount) {
+  let row = [...cells];
+
+  if (columnCount >= 3 && row.length >= 3 && countDollarSigns(row[1]) % 2 === 1 && looksLikeMathTableFragment(row[2])) {
+    const mathTail = row[2].replace(/^\|/, "").replace(/\|$/, "").trim();
+    row = [row[0], `${row[1].trim()} | ${mathTail} |$`, ...row.slice(3)];
+  }
+
+  if (row.length < columnCount) {
+    row = [...row, ...Array.from({ length: columnCount - row.length }, () => "")];
+  }
+  if (row.length > columnCount) {
+    row = [...row.slice(0, columnCount - 1), row.slice(columnCount - 1).join(" | ")];
+  }
+
+  return row.map(normalizeTableCell);
+}
+
 function isTableSeparatorRow(cells) {
   return cells.length > 0 && cells.every((cell) => /^:?-{3,}:?$/.test(cell));
 }
 
 function parseInlineMarkdownTable(raw) {
-  const normalized = raw.replace(/\|\|/g, "|\n|");
+  const normalized = raw.replace(/\|?\s*Export to Sheets\s*$/i, "").replace(/\|\|/g, "|\n|");
   const rows = normalized
     .split("\n")
     .map((line) => line.trim())
@@ -193,7 +228,9 @@ function parseInlineMarkdownTable(raw) {
     return null;
   }
 
-  return [parsedRows[0], ...parsedRows.slice(2)];
+  const contentRows = [parsedRows[0], ...parsedRows.slice(2)];
+  const columnCount = contentRows[0].length;
+  return contentRows.map((cells) => normalizeTableRowWidth(cells, columnCount));
 }
 
 function extractEquationText(raw) {

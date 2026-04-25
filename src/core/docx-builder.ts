@@ -1253,7 +1253,8 @@ function splitTableCells(rawRow: string): string[] {
       continue;
     }
 
-    if (ch === "|" && !inMath) {
+    const hasClosingDollar = inMath && row.indexOf("$", cursor + 1) >= 0;
+    if (ch === "|" && (!inMath || !hasClosingDollar)) {
       const value = cell.trim();
       if (value) {
         cells.push(value);
@@ -1273,13 +1274,47 @@ function splitTableCells(rawRow: string): string[] {
   return cells;
 }
 
+function countDollarSigns(text: string): number {
+  return (text.match(/(?<!\\)\$/g) ?? []).length;
+}
+
+function looksLikeMathTableFragment(text: string): boolean {
+  const trimmed = text.trim();
+  if (!trimmed) return false;
+  if (/[\u4e00-\u9fff]{2,}/.test(trimmed)) return false;
+  return /\\[A-Za-z]+|[_^=+\-*/]|[A-Za-z]\s*[-+]/.test(trimmed);
+}
+
+function normalizeTableCell(cell: string): string {
+  const trimmed = cell.trim();
+  return countDollarSigns(trimmed) % 2 === 1 ? `${trimmed}$` : trimmed;
+}
+
+function normalizeTableRowWidth(cells: string[], columnCount: number): string[] {
+  let row = [...cells];
+
+  if (columnCount >= 3 && row.length >= 3 && countDollarSigns(row[1]) % 2 === 1 && looksLikeMathTableFragment(row[2])) {
+    const mathTail = row[2].replace(/^\|/, "").replace(/\|$/, "").trim();
+    row = [row[0], `${row[1].trim()} | ${mathTail} |$`, ...row.slice(3)];
+  }
+
+  if (row.length < columnCount) {
+    row = [...row, ...Array.from({ length: columnCount - row.length }, () => "")];
+  }
+  if (row.length > columnCount) {
+    row = [...row.slice(0, columnCount - 1), row.slice(columnCount - 1).join(" | ")];
+  }
+
+  return row.map(normalizeTableCell);
+}
+
 function isTableSeparatorRow(cells: string[]): boolean {
   if (cells.length === 0) return false;
   return cells.every((cell) => /^:?-{2,}:?$/.test(cell));
 }
 
 function parseInlineMarkdownTable(raw: string): string[][] | null {
-  const trimmed = raw.trim();
+  const trimmed = raw.trim().replace(/\|?\s*Export to Sheets\s*$/i, "");
   if (!trimmed.includes("|")) return null;
 
   const rowCandidates = trimmed.includes("||")
@@ -1305,9 +1340,8 @@ function parseInlineMarkdownTable(raw: string): string[][] | null {
 
   const columnCount = contentRows[0].length;
   if (columnCount < 2) return null;
-  if (!contentRows.every((cells) => cells.length === columnCount)) return null;
 
-  return contentRows;
+  return contentRows.map((cells) => normalizeTableRowWidth(cells, columnCount));
 }
 
 function buildDocxTable(rows: string[][]): Table {

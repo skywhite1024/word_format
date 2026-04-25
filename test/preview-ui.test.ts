@@ -119,6 +119,30 @@ describe("preview ui", () => {
     expect(html).not.toContain("$L =");
   });
 
+  it("should preview imported Gemini tables with malformed absolute-value math as tables", () => {
+    const { renderStructuredPreview } = loadPreviewContext();
+    const html = renderStructuredPreview({
+      mode: "official",
+      title: "gemini table",
+      stats: { paragraphCount: 1, headingCount: 0, referenceCount: 0 },
+      blocks: [
+        {
+          type: "paragraph",
+          level: 0,
+          text:
+            "| 损失函数名称 | 数学表达式 | 适用场景 || --- | --- | --- || 均方误差 (MSE) | $L = (y - \\hat{y})^2$ | 回归问题，对离群点敏感 || 平均绝对误差 (MAE) | $L = | y - \\hat{y} || 交叉熵 (Cross-Entropy) | $L = -\\sum y \\log(\\hat{y})$ | 分类问题，衡量概率分布的差异 || Hinge Loss | $L = \\max(0, 1 - y \\cdot \\hat{y})$ | SVM（支持向量机），强调“硬分类” |Export to Sheets",
+        },
+      ],
+    });
+
+    expect(html).toContain("<table>");
+    expect(html).toContain("平均绝对误差");
+    expect(html).toContain("交叉熵");
+    expect(html).toContain('class="inline-math"');
+    expect(html).not.toContain("| 损失函数名称 |");
+    expect(html).not.toContain("Export to Sheets");
+  });
+
   it("should limit very large previews by default and allow full rendering on demand", () => {
     const { renderStructuredPreview } = loadPreviewContext();
     const blocks = Array.from({ length: 260 }, (_item, index) => ({
