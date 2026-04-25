@@ -91,6 +91,34 @@ describe("preview ui", () => {
     expect(css).toMatch(/\.preview-card\s*\{[^}]*backdrop-filter:\s*none/s);
   });
 
+  it("should render inline math inside preview tables", () => {
+    const { renderStructuredPreview } = loadPreviewContext();
+    const html = renderStructuredPreview({
+      mode: "official",
+      title: "table math",
+      stats: { paragraphCount: 1, headingCount: 0, referenceCount: 0 },
+      blocks: [
+        {
+          type: "paragraph",
+          level: 0,
+          text: [
+            "| loss | formula | scene |",
+            "| --- | --- | --- |",
+            "| MSE | $L = (y - \\hat{y})^2$ | regression |",
+            "| MAE | $L = |y - \\hat{y}|$ | robust |",
+            "| CE | $L = -\\sum y \\log(\\hat{y})$ | classification |",
+          ].join("\n"),
+        },
+      ],
+    });
+
+    expect(html).toContain("<table>");
+    expect(html).toContain('class="inline-math"');
+    expect(html).not.toContain("\\hat");
+    expect(html).not.toContain("\\sum");
+    expect(html).not.toContain("$L =");
+  });
+
   it("should limit very large previews by default and allow full rendering on demand", () => {
     const { renderStructuredPreview } = loadPreviewContext();
     const blocks = Array.from({ length: 260 }, (_item, index) => ({

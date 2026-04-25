@@ -125,10 +125,53 @@ async function postJson(path, payload, signal) {
 }
 
 function splitTableCells(rawRow) {
-  return rawRow
-    .split("|")
-    .map((item) => item.trim())
-    .filter(Boolean);
+  let row = rawRow.trim();
+  if (row.startsWith("|")) {
+    row = row.slice(1);
+  }
+  if (row.endsWith("|") && row[row.length - 2] !== "\\") {
+    row = row.slice(0, -1);
+  }
+
+  const cells = [];
+  let cell = "";
+  let inMath = false;
+
+  for (let cursor = 0; cursor < row.length; cursor += 1) {
+    const ch = row[cursor];
+    const next = row[cursor + 1] || "";
+    const escaped = cursor > 0 && row[cursor - 1] === "\\";
+
+    if (ch === "\\" && next === "|") {
+      cell += "|";
+      cursor += 1;
+      continue;
+    }
+
+    if (ch === "$" && !escaped) {
+      inMath = !inMath;
+      cell += ch;
+      continue;
+    }
+
+    if (ch === "|" && !inMath) {
+      const value = cell.trim();
+      if (value) {
+        cells.push(value);
+      }
+      cell = "";
+      continue;
+    }
+
+    cell += ch;
+  }
+
+  const tail = cell.trim();
+  if (tail) {
+    cells.push(tail);
+  }
+
+  return cells;
 }
 
 function isTableSeparatorRow(cells) {
@@ -455,23 +498,28 @@ function formatEquationContent(text) {
   return html;
 }
 
-function formatInlineContent(text) {
+function formatPlainInlinePreviewText(text) {
   return escapeHtml(text)
-    .replace(/\\theta/g, "θ")
-    .replace(/\\phi/g, "φ")
-    .replace(/\\pi/g, "π")
-    .replace(/\\mu/g, "μ")
-    .replace(/\\sigma/g, "σ")
-    .replace(/\\eta/g, "η")
-    .replace(/\\epsilon/g, "ε")
-    .replace(/\\lambda/g, "λ")
-    .replace(/\\infty/g, "∞")
-    .replace(/\\mid/g, "|")
-    .replace(/\\mathbb\{([^{}]+)\}/g, "$1")
-    .replace(/\\mathcal\{([^{}]+)\}/g, "$1")
+    .replace(/\\(?:mathbb|mathcal)\{([^{}]+)\}/g, "$1")
+    .replace(/\\([A-Za-z]+)/g, (_match, command) => PREVIEW_COMMAND_TEXT[command] || command)
     .replace(/`([^`\n]+)`/g, '<span class="inline-code">$1</span>')
-    .replace(/\$([^$\n]+)\$/g, '<span class="inline-math">$1</span>')
     .replace(/\[(\d+)\]/g, '<span class="citation">[$1]</span>');
+}
+
+function formatInlineContent(text) {
+  const regex = /\$([^$\n]+)\$/g;
+  let output = "";
+  let cursor = 0;
+
+  for (const match of text.matchAll(regex)) {
+    const start = match.index || 0;
+    output += formatPlainInlinePreviewText(text.slice(cursor, start));
+    output += `<span class="inline-math">${renderEquationExpression(match[1])}</span>`;
+    cursor = start + match[0].length;
+  }
+
+  output += formatPlainInlinePreviewText(text.slice(cursor));
+  return output;
 }
 
 function buildTableHtml(rows) {

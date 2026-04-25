@@ -402,6 +402,39 @@ describe("docx-builder", () => {
     expect(docContent).toContain("驱动与柔顺性");
   });
 
+  it("should keep markdown tables when math cells contain vertical bars", async () => {
+    const structured: StructuredDoc = {
+      mode: "official",
+      title: "表格公式测试",
+      blocks: [
+        {
+          type: "paragraph",
+          level: 0,
+          text: [
+            "| 损失函数名称 | 数学表达式 | 适用场景 |",
+            "| --- | --- | --- |",
+            "| 均方误差 (MSE) | $L = (y - \\hat{y})^2$ | 回归问题，对离群点敏感 |",
+            "| 平均绝对误差 (MAE) | $L = |y - \\hat{y}|$ | 回归问题，比 MSE 更具鲁棒性 |",
+            "| 交叉熵 (Cross-Entropy) | $L = -\\sum y \\log(\\hat{y})$ | 分类问题，衡量概率分布的差异 |",
+          ].join("\n"),
+        },
+      ],
+      stats: { paragraphCount: 1, headingCount: 0, referenceCount: 0 },
+    };
+
+    const bytes = await buildDocx(structured);
+    const zip = await JSZip.loadAsync(bytes);
+    const documentXml = await zip.file("word/document.xml")?.async("string");
+    const docContent = documentXml ?? "";
+
+    expect(docContent).toContain("<w:tbl>");
+    expect(docContent).toContain("损失函数名称");
+    expect(docContent).toContain("平均绝对误差");
+    expect(docContent).toContain("<m:oMath");
+    expect(docContent).not.toContain("| 损失函数名称 |");
+    expect(docContent).not.toContain("---");
+  });
+
   it("should support math italic toggle off by forcing normal math run", async () => {
     const structured: StructuredDoc = {
       mode: "official",

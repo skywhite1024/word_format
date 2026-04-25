@@ -1224,13 +1224,53 @@ function parseFigureCaption(raw: string): { title: string } | null {
 }
 
 function splitTableCells(rawRow: string): string[] {
-  return rawRow
-    .trim()
-    .replace(/^\|/, "")
-    .replace(/\|$/, "")
-    .split("|")
-    .map((cell) => cell.trim())
-    .filter((cell) => cell.length > 0);
+  let row = rawRow.trim();
+  if (row.startsWith("|")) {
+    row = row.slice(1);
+  }
+  if (row.endsWith("|") && row[row.length - 2] !== "\\") {
+    row = row.slice(0, -1);
+  }
+
+  const cells: string[] = [];
+  let cell = "";
+  let inMath = false;
+
+  for (let cursor = 0; cursor < row.length; cursor += 1) {
+    const ch = row[cursor];
+    const next = row[cursor + 1] ?? "";
+    const escaped = cursor > 0 && row[cursor - 1] === "\\";
+
+    if (ch === "\\" && next === "|") {
+      cell += "|";
+      cursor += 1;
+      continue;
+    }
+
+    if (ch === "$" && !escaped) {
+      inMath = !inMath;
+      cell += ch;
+      continue;
+    }
+
+    if (ch === "|" && !inMath) {
+      const value = cell.trim();
+      if (value) {
+        cells.push(value);
+      }
+      cell = "";
+      continue;
+    }
+
+    cell += ch;
+  }
+
+  const tail = cell.trim();
+  if (tail) {
+    cells.push(tail);
+  }
+
+  return cells;
 }
 
 function isTableSeparatorRow(cells: string[]): boolean {
@@ -1306,7 +1346,10 @@ function buildDocxTable(rows: string[][]): Table {
                     line: 360,
                     lineRule: LineRuleType.AUTO,
                   },
-                  children: [textRun(cell, FONT_CN_SONG, 21, rowIndex === 0)],
+                  children:
+                    rowIndex === 0
+                      ? [textRun(cell.replace(/\*\*/g, ""), FONT_CN_SONG, 21, true)]
+                      : buildInlineMathChildren(cell.replace(/\*\*/g, "")),
                 }),
               ],
             }),
