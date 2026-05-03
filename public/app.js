@@ -16,6 +16,7 @@ const previewMeta = document.getElementById("previewMeta");
 const inputCounter = document.getElementById("inputCounter");
 const imageFilesInput = document.getElementById("imageFiles");
 const imagePreviewList = document.getElementById("imagePreviewList");
+const useOriginalCaptionIndexInput = document.getElementById("useOriginalCaptionIndex");
 
 const EMPTY_PREVIEW_HTML = `
   <div class="empty-state">
@@ -371,13 +372,15 @@ function normalizeCaptionTitle(raw) {
 }
 
 function parseTableCaption(raw) {
-  const match = raw.trim().match(/^表\s*\d+(?:[-—－]\d+)?\s*(.+)$/);
-  return match ? { title: normalizeCaptionTitle(match[1]) } : null;
+  const match = raw.trim().match(/^表\s*(\d+(?:[-—－]\d+)?)?\s*(.+)$/);
+  if (!match) return null;
+  return { title: normalizeCaptionTitle(match[2]), index: match[1] || "" };
 }
 
 function parseFigureCaption(raw) {
-  const match = raw.trim().match(/^图\s*\d+(?:[-—－]\d+)?\s*(.+)$/);
-  return match ? { title: normalizeCaptionTitle(match[1]) } : null;
+  const match = raw.trim().match(/^图\s*(\d+(?:[-—－]\d+)?)?\s*(.+)$/);
+  if (!match) return null;
+  return { title: normalizeCaptionTitle(match[2]), index: match[1] || "" };
 }
 
 function isEquationNumberOnlyLine(text) {
@@ -710,18 +713,20 @@ function renderStructuredPreview(structured, options = {}) {
     const tableCaption = parseTableCaption(text);
     if (tableCaption) {
       tableIndex += 1;
-      pieces.push(`<p class="caption paragraph-no-indent">表${tableIndex} ${formatInlineContent(tableCaption.title)}</p>`);
+      const tableLabel = useOriginalCaptionIndexInput.checked && tableCaption.index ? tableCaption.index : tableIndex;
+      pieces.push(`<p class="caption paragraph-no-indent">表${tableLabel} ${formatInlineContent(tableCaption.title)}</p>`);
       continue;
     }
 
     const figureCaption = parseFigureCaption(text);
     if (figureCaption) {
       figureIndex += 1;
+      const figureLabel = useOriginalCaptionIndexInput.checked && figureCaption.index ? figureCaption.index : figureIndex;
       const matched = findMatchingImage(text, uploadedImages);
       if (matched) {
-        pieces.push(`<div class="figure-image"><img src="data:image/${matched.type};base64,${matched.base64}" alt="图${figureIndex}" /></div>`);
+        pieces.push(`<div class="figure-image"><img src="data:image/${matched.type};base64,${matched.base64}" alt="图${figureLabel}" /></div>`);
       }
-      pieces.push(`<p class="caption paragraph-no-indent">图${figureIndex} ${formatInlineContent(figureCaption.title)}</p>`);
+      pieces.push(`<p class="caption paragraph-no-indent">图${figureLabel} ${formatInlineContent(figureCaption.title)}</p>`);
       continue;
     }
 
@@ -927,6 +932,7 @@ async function downloadDocx() {
         mode: modeSelect.value || "auto",
         useLlm: !!useLlmInput.checked,
         mathItalic: !!mathItalicInput.checked,
+        useOriginalCaptionIndex: !!useOriginalCaptionIndexInput.checked,
         structured: lastStructured,
         images: uploadedImages.size > 0 ? Object.fromEntries(uploadedImages) : undefined,
       }),
@@ -1176,7 +1182,7 @@ inputText.addEventListener("input", () => {
   schedulePreviewRefresh();
 });
 
-[modeSelect, useLlmInput, mathItalicInput].forEach((element) => {
+[modeSelect, useLlmInput, mathItalicInput, useOriginalCaptionIndexInput].forEach((element) => {
   element.addEventListener("change", () => {
     if (inputText.value.trim()) {
       refreshPreview({ silent: true });

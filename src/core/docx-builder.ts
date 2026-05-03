@@ -54,6 +54,7 @@ const CHAR_SQRT = "\u221A";
 interface BuildDocxOptions {
   mathItalic?: boolean;
   images?: Record<string, ImageData>;
+  useOriginalCaptionIndex?: boolean;
 }
 
 function textRun(
@@ -1207,22 +1208,22 @@ function normalizeCaptionTitle(text: string): string {
   return text.trim().replace(/[。！？；：,.!?]+$/g, "");
 }
 
-function parseTableCaption(raw: string): { title: string } | null {
+function parseTableCaption(raw: string): { title: string; index: string } | null {
   const t = raw.trim();
-  const match = t.match(/^表\s*(?:\d+(?:[-.]\d+)*)?\s*[：:.、]?\s*(.+)$/);
+  const match = t.match(/^表\s*(\d+(?:[-.]\d+)*)?\s*[：:.、]?\s*(.+)$/);
   if (!match) return null;
-  const title = normalizeCaptionTitle(match[1]);
+  const title = normalizeCaptionTitle(match[2]);
   if (!title) return null;
-  return { title };
+  return { title, index: match[1] || "" };
 }
 
-function parseFigureCaption(raw: string): { title: string } | null {
+function parseFigureCaption(raw: string): { title: string; index: string } | null {
   const t = raw.trim();
-  const match = t.match(/^图\s*(?:\d+(?:[-.]\d+)*)?\s*[：:.、]?\s*(.+)$/);
+  const match = t.match(/^图\s*(\d+(?:[-.]\d+)*)?\s*[：:.、]?\s*(.+)$/);
   if (!match) return null;
-  const title = normalizeCaptionTitle(match[1]);
+  const title = normalizeCaptionTitle(match[2]);
   if (!title) return null;
-  return { title };
+  return { title, index: match[1] || "" };
 }
 
 function splitTableCells(rawRow: string): string[] {
@@ -1532,7 +1533,7 @@ function equationParagraph(raw: string, state: { current: number }): Table {
   });
 }
 
-function tableCaptionParagraph(index: number, title: string): Paragraph {
+function tableCaptionParagraph(label: string, title: string): Paragraph {
   return new Paragraph({
     alignment: AlignmentType.CENTER,
     spacing: {
@@ -1541,11 +1542,11 @@ function tableCaptionParagraph(index: number, title: string): Paragraph {
       line: 360,
       lineRule: LineRuleType.AUTO,
     },
-    children: [textRun(`表${index} ${title}`, FONT_CN_HEI, 21, false)],
+    children: [textRun(`表${label} ${title}`, FONT_CN_HEI, 21, false)],
   });
 }
 
-function figureCaptionParagraph(index: number, title: string): Paragraph {
+function figureCaptionParagraph(label: string, title: string): Paragraph {
   return new Paragraph({
     alignment: AlignmentType.CENTER,
     spacing: {
@@ -1554,7 +1555,7 @@ function figureCaptionParagraph(index: number, title: string): Paragraph {
       line: 360,
       lineRule: LineRuleType.AUTO,
     },
-    children: [textRun(`图${index} ${title}`, FONT_CN_HEI, 21, false)],
+    children: [textRun(`图${label} ${title}`, FONT_CN_HEI, 21, false)],
   });
 }
 
@@ -1669,7 +1670,7 @@ function buildImageParagraph(imageData: ImageData, maxWidthMm: number): Paragrap
 
 const MAX_IMAGE_WIDTH_MM = 150;
 
-function buildBody(structured: StructuredDoc, images?: Record<string, ImageData>): FileChild[] {
+function buildBody(structured: StructuredDoc, images?: Record<string, ImageData>, useOriginalCaptionIndex?: boolean): FileChild[] {
   const paragraphs: FileChild[] = [];
   const referenceAnchorMap = buildReferenceAnchorMap(structured.blocks);
   const equationState = { current: 0 };
@@ -1718,13 +1719,15 @@ function buildBody(structured: StructuredDoc, images?: Record<string, ImageData>
     const tableCaption = parseTableCaption(block.text);
     if (tableCaption) {
       tableIndex += 1;
-      paragraphs.push(tableCaptionParagraph(tableIndex, tableCaption.title));
+      const tableLabel = useOriginalCaptionIndex && tableCaption.index ? tableCaption.index : String(tableIndex);
+      paragraphs.push(tableCaptionParagraph(tableLabel, tableCaption.title));
       continue;
     }
 
     const figureCaption = parseFigureCaption(block.text);
     if (figureCaption) {
       figureIndex += 1;
+      const figureLabel = useOriginalCaptionIndex && figureCaption.index ? figureCaption.index : String(figureIndex);
       if (images) {
         const matched = findMatchingImage(block.text, images);
         if (matched) {
@@ -1734,7 +1737,7 @@ function buildBody(structured: StructuredDoc, images?: Record<string, ImageData>
           }
         }
       }
-      paragraphs.push(figureCaptionParagraph(figureIndex, figureCaption.title));
+      paragraphs.push(figureCaptionParagraph(figureLabel, figureCaption.title));
       continue;
     }
 
@@ -1847,7 +1850,7 @@ export async function buildDocx(structured: StructuredDoc, options: BuildDocxOpt
             ],
           }),
         },
-        children: buildBody(structured, options.images),
+        children: buildBody(structured, options.images, options.useOriginalCaptionIndex),
       },
     ],
   });

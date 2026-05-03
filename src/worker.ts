@@ -19,6 +19,7 @@ interface RequestPayload {
   mode: Mode;
   useLlm: boolean;
   mathItalic: boolean;
+  useOriginalCaptionIndex?: boolean;
   structured?: StructuredDoc;
   images?: Record<string, ImageData>;
 }
@@ -77,6 +78,14 @@ function sanitizeMathItalic(input: unknown): boolean {
   return true;
 }
 
+function sanitizeUseOriginalCaptionIndex(input: unknown): boolean {
+  if (typeof input === "boolean") return input;
+  if (typeof input === "string") {
+    return input === "true" || input === "1";
+  }
+  return false;
+}
+
 function sanitizeImages(input: unknown): Record<string, ImageData> | undefined {
   if (!input || typeof input !== "object") return undefined;
   const result: Record<string, ImageData> = {};
@@ -133,6 +142,7 @@ async function parsePayload(request: Request): Promise<RequestPayload | null> {
       mode?: unknown;
       useLlm?: unknown;
       mathItalic?: unknown;
+      useOriginalCaptionIndex?: unknown;
       structured?: unknown;
       images?: unknown;
     };
@@ -149,6 +159,7 @@ async function parsePayload(request: Request): Promise<RequestPayload | null> {
       mode: sanitizeMode(payload.mode),
       useLlm: sanitizeUseLlm(payload.useLlm),
       mathItalic: sanitizeMathItalic(payload.mathItalic),
+      useOriginalCaptionIndex: sanitizeUseOriginalCaptionIndex(payload.useOriginalCaptionIndex),
       structured: sanitizeStructuredPayload(payload.structured),
       images: sanitizeImages(payload.images),
     };
@@ -256,6 +267,7 @@ export default {
         const fileContent = await buildDocx(result.structured, {
           mathItalic: payload.mathItalic,
           images: payload.images,
+          useOriginalCaptionIndex: payload.useOriginalCaptionIndex,
         });
         const filename = `formatted_${Date.now()}.docx`;
         const stableBytes = new Uint8Array(fileContent.byteLength);
