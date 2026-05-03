@@ -1593,7 +1593,7 @@ function getImageDimensions(data: Uint8Array): { width: number; height: number }
 }
 
 function extractFigureNumber(text: string): string | null {
-  const match = text.trim().match(/^图\s*(\d+(?:[-—－]\d+)?)\s/);
+  const match = text.trim().match(/^图\s*(\d+(?:[-—－]\d+)?)/);
   if (!match) return null;
   return match[1].replace(/[-—－]/g, "-");
 }
@@ -1616,8 +1616,18 @@ function findMatchingImage(figureText: string, images: Record<string, ImageData>
   return null;
 }
 
-function buildImageParagraph(imageData: ImageData, maxWidthMm: number): Paragraph {
-  const buffer = Uint8Array.from(atob(imageData.base64), (c) => c.charCodeAt(0));
+function buildImageParagraph(imageData: ImageData, maxWidthMm: number): Paragraph | null {
+  let buffer: Uint8Array;
+  try {
+    const binary = atob(imageData.base64);
+    const len = binary.length;
+    buffer = new Uint8Array(len);
+    for (let i = 0; i < len; i++) {
+      buffer[i] = binary.charCodeAt(i);
+    }
+  } catch {
+    return null;
+  }
   const dims = getImageDimensions(buffer);
 
   const maxEmu = maxWidthMm * 36000; // 1mm = 36000 EMU
@@ -1718,7 +1728,10 @@ function buildBody(structured: StructuredDoc, images?: Record<string, ImageData>
       if (images) {
         const matched = findMatchingImage(block.text, images);
         if (matched) {
-          paragraphs.push(buildImageParagraph(matched, MAX_IMAGE_WIDTH_MM));
+          const imgPara = buildImageParagraph(matched, MAX_IMAGE_WIDTH_MM);
+          if (imgPara) {
+            paragraphs.push(imgPara);
+          }
         }
       }
       paragraphs.push(figureCaptionParagraph(figureIndex, figureCaption.title));

@@ -39,7 +39,7 @@ function normalizeImageKey(name) {
 }
 
 function extractFigureNumber(text) {
-  const match = text.trim().match(/^图\s*(\d+(?:[-—－]\d+)?)\s/);
+  const match = text.trim().match(/^图\s*(\d+(?:[-—－]\d+)?)/);
   return match ? match[1].replace(/[-—－]/g, "-") : null;
 }
 
@@ -75,11 +75,25 @@ function renderImagePreviewList() {
   imagePreviewList.innerHTML = items.join("");
 }
 
+const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024; // 5MB
+
 function handleImageUpload(event) {
   const files = event.target.files;
   if (!files || files.length === 0) return;
 
+  let uploadedCount = 0;
+  let pendingCount = files.length;
+
   for (const file of files) {
+    if (file.size > MAX_IMAGE_SIZE_BYTES) {
+      setStatus(`图片 ${file.name} 超过 5MB 限制，已跳过。`);
+      pendingCount -= 1;
+      if (pendingCount === 0 && uploadedCount > 0) {
+        paintPreview();
+      }
+      continue;
+    }
+
     const reader = new FileReader();
     reader.onload = () => {
       const base64 = reader.result.replace(/^data:image\/[^;]+;base64,/, "");
@@ -88,8 +102,14 @@ function handleImageUpload(event) {
       const type = typeMap[ext] || "png";
       const key = normalizeImageKey(file.name);
       uploadedImages.set(key, { base64, type });
+      uploadedCount += 1;
       renderImagePreviewList();
-      setStatus(`已上传图片: ${file.name}`);
+      setStatus(`已上传图片: ${file.name}（共 ${uploadedImages.size} 张）`);
+      // Refresh preview after last file is processed
+      pendingCount -= 1;
+      if (pendingCount === 0) {
+        paintPreview();
+      }
     };
     reader.readAsDataURL(file);
   }
@@ -100,6 +120,7 @@ function removeImage(key) {
   uploadedImages.delete(key);
   renderImagePreviewList();
   setStatus(`已移除图片: ${key}`);
+  paintPreview();
 }
 
 function escapeHtml(text) {
@@ -879,9 +900,25 @@ async function downloadDocx() {
     return;
   }
 
+  // Check total image data size before sending
+  if (uploadedImages.size > 0) {
+    let totalBase64Len = 0;
+    for (const [, img] of uploadedImages) {
+      totalBase64Len += img.base64.length;
+    }
+    const totalBytes = Math.floor(totalBase64Len * 3 / 4);
+    if (totalBytes > 15 * 1024 * 1024) {
+      setStatus("图片数据总量过大（超过 15MB），请减少图片数量或使用更小的图片。");
+      return;
+    }
+  }
+
   setButtonsDisabled(true);
   setStatus("正在生成 Word 文档...");
   try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 120000); // 2 min timeout
+
     const response = await fetch("/api/format/docx", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -893,11 +930,18 @@ async function downloadDocx() {
         structured: lastStructured,
         images: uploadedImages.size > 0 ? Object.fromEntries(uploadedImages) : undefined,
       }),
+      signal: controller.signal,
     });
 
+    clearTimeout(timeoutId);
+
     if (!response.ok) {
-      const data = await response.json();
-      throw new Error(data.error || "导出 Word 失败");
+      let errMsg = "导出 Word 失败";
+      try {
+        const data = await response.json();
+        errMsg = data.error || errMsg;
+      } catch { /* ignore */ }
+      throw new Error(errMsg);
     }
 
     const blob = await response.blob();
@@ -914,7 +958,11 @@ async function downloadDocx() {
     const engine = response.headers.get("X-Format-Engine") || "rule";
     setStatus(`Word 已导出，使用引擎: ${engine}。`);
   } catch (error) {
-    setStatus(error instanceof Error ? error.message : "导出 Word 失败。");
+    if (error instanceof DOMException && error.name === "AbortError") {
+      setStatus("生成 Word 超时，请减少图片数量或使用更小的图片后重试。");
+    } else {
+      setStatus(error instanceof Error ? error.message : "导出 Word 失败。");
+    }
   } finally {
     setButtonsDisabled(false);
   }
