@@ -193,13 +193,17 @@ async function buildStructuredResult(payload: FormatPayload): Promise<{
 }
 
 function openBrowser(url: string) {
-  const platform = process.platform;
-  const cmd = platform === "win32" ? "start" : platform === "darwin" ? "open" : "xdg-open";
   try {
     const { execSync } = require("node:child_process");
-    execSync(`${cmd} "${url}"`, { stdio: "ignore" });
+    if (process.platform === "win32") {
+      execSync(`start "" "${url}"`, { stdio: "ignore" });
+    } else if (process.platform === "darwin") {
+      execSync(`open "${url}"`, { stdio: "ignore" });
+    } else {
+      execSync(`xdg-open "${url}"`, { stdio: "ignore" });
+    }
   } catch {
-    // Ignore - user can open manually
+    console.log(`[提示] 无法自动打开浏览器，请手动访问: ${url}`);
   }
 }
 
