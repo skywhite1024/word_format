@@ -134,19 +134,26 @@ function handleImageUpload(event) {
       const dataUrl = reader.result;
       const key = normalizeImageKey(file.name);
       try {
-        const needsCompress = file.size > COMPRESS_THRESHOLD_BYTES;
+        const base64Raw = dataUrl.replace(/^data:image\/[^;]+;base64,/, "");
+        const ext = file.name.split(".").pop().toLowerCase();
+        const typeMap = { jpg: "jpg", jpeg: "jpg", png: "png", gif: "gif", bmp: "bmp" };
+        const type = typeMap[ext] || "png";
+        const needsCompress = file.size > COMPRESS_THRESHOLD_BYTES && type !== "gif";
+
         if (needsCompress) {
-          setStatus(`正在压缩图片: ${file.name}...`);
-          const compressed = await compressImage(dataUrl, file.name);
-          uploadedImages.set(key, { base64: compressed.base64, type: compressed.type });
-          const savedMB = ((file.size - compressed.base64.length * 3 / 4) / 1024 / 1024).toFixed(1);
-          setStatus(`已压缩 ${file.name}（节省 ${savedMB}MB，共 ${uploadedImages.size} 张）`);
+          try {
+            setStatus(`正在压缩图片: ${file.name}...`);
+            const compressed = await compressImage(dataUrl, file.name);
+            uploadedImages.set(key, { base64: compressed.base64, type: compressed.type });
+            const savedMB = ((file.size - compressed.base64.length * 3 / 4) / 1024 / 1024).toFixed(1);
+            setStatus(`已压缩 ${file.name}（节省 ${savedMB}MB，共 ${uploadedImages.size} 张）`);
+          } catch {
+            // Compression failed (e.g. invalid image), fall back to original
+            uploadedImages.set(key, { base64: base64Raw, type });
+            setStatus(`已上传图片: ${file.name}（压缩失败，使用原图，共 ${uploadedImages.size} 张）`);
+          }
         } else {
-          const base64 = dataUrl.replace(/^data:image\/[^;]+;base64,/, "");
-          const ext = file.name.split(".").pop().toLowerCase();
-          const typeMap = { jpg: "jpg", jpeg: "jpg", png: "png", gif: "gif", bmp: "bmp" };
-          const type = typeMap[ext] || "png";
-          uploadedImages.set(key, { base64, type });
+          uploadedImages.set(key, { base64: base64Raw, type });
           setStatus(`已上传图片: ${file.name}（共 ${uploadedImages.size} 张）`);
         }
       } catch (err) {
