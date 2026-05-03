@@ -4,7 +4,7 @@ import { structureTextWithLlm } from "./core/llm-structurer";
 import { renderPreview } from "./core/preview";
 import { importSharedConversation } from "./core/share-import";
 import { deepRepairText } from "./core/text-repair";
-import type { Mode, StructuredDoc } from "./core/types";
+import type { ImageData, Mode, StructuredDoc } from "./core/types";
 
 export interface Env {
   ASSETS: Fetcher;
@@ -20,6 +20,7 @@ interface RequestPayload {
   useLlm: boolean;
   mathItalic: boolean;
   structured?: StructuredDoc;
+  images?: Record<string, ImageData>;
 }
 
 interface TextOnlyPayload {
@@ -76,6 +77,20 @@ function sanitizeMathItalic(input: unknown): boolean {
   return true;
 }
 
+function sanitizeImages(input: unknown): Record<string, ImageData> | undefined {
+  if (!input || typeof input !== "object") return undefined;
+  const result: Record<string, ImageData> = {};
+  for (const [key, value] of Object.entries(input as Record<string, unknown>)) {
+    if (!value || typeof value !== "object") continue;
+    const img = value as { base64?: unknown; type?: unknown };
+    if (typeof img.base64 !== "string" || !img.base64) continue;
+    const validTypes = new Set(["jpg", "png", "gif", "bmp"]);
+    const type = validTypes.has(img.type as string) ? (img.type as ImageData["type"]) : "png";
+    result[key.trim().toLowerCase()] = { base64: img.base64, type };
+  }
+  return Object.keys(result).length > 0 ? result : undefined;
+}
+
 function sanitizeStructuredPayload(input: unknown): StructuredDoc | undefined {
   if (!input || typeof input !== "object") return undefined;
   const value = input as Partial<StructuredDoc>;
@@ -119,6 +134,7 @@ async function parsePayload(request: Request): Promise<RequestPayload | null> {
       useLlm?: unknown;
       mathItalic?: unknown;
       structured?: unknown;
+      images?: unknown;
     };
     const rawText = typeof payload.text === "string" ? payload.text : "";
     const text = sanitizeMarkdownText(rawText);
@@ -134,6 +150,7 @@ async function parsePayload(request: Request): Promise<RequestPayload | null> {
       useLlm: sanitizeUseLlm(payload.useLlm),
       mathItalic: sanitizeMathItalic(payload.mathItalic),
       structured: sanitizeStructuredPayload(payload.structured),
+      images: sanitizeImages(payload.images),
     };
   } catch (error) {
     if (error instanceof Error) {
@@ -238,6 +255,7 @@ export default {
           : await buildStructuredResult(payload, env);
         const fileContent = await buildDocx(result.structured, {
           mathItalic: payload.mathItalic,
+          images: payload.images,
         });
         const filename = `formatted_${Date.now()}.docx`;
         const stableBytes = new Uint8Array(fileContent.byteLength);

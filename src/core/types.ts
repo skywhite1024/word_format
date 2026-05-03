@@ -8,6 +8,11 @@ export interface Block {
   level: number;
 }
 
+export interface ImageData {
+  base64: string;
+  type: "jpg" | "png" | "gif" | "bmp";
+}
+
 export interface StructuredDoc {
   mode: Exclude<Mode, "auto">;
   title: string;

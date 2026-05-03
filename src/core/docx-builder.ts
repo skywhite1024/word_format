@@ -5,6 +5,7 @@
   FileChild,
   Footer,
   HeadingLevel,
+  ImageRun,
   InternalHyperlink,
   LevelFormat,
   LineRuleType,
@@ -33,7 +34,7 @@
   convertMillimetersToTwip,
 } from "docx";
 import JSZip from "jszip";
-import type { Block, StructuredDoc } from "./types";
+import type { Block, ImageData, StructuredDoc } from "./types";
 
 const FONT_CN_SONG = "宋体";
 const FONT_CN_HEI = "黑体";
@@ -52,6 +53,7 @@ const CHAR_SQRT = "\u221A";
 
 interface BuildDocxOptions {
   mathItalic?: boolean;
+  images?: Record<string, ImageData>;
 }
 
 function textRun(
@@ -1556,7 +1558,108 @@ function figureCaptionParagraph(index: number, title: string): Paragraph {
   });
 }
 
-function buildBody(structured: StructuredDoc): FileChild[] {
+function round(n: number): number {
+  return (n + 0.5) | 0;
+}
+
+function getImageDimensions(data: Uint8Array): { width: number; height: number } | null {
+  if (data.length < 24) return null;
+
+  // PNG: 8-byte signature, then IHDR chunk with width/height at offset 16
+  if (data[0] === 0x89 && data[1] === 0x50 && data[2] === 0x4e && data[3] === 0x47) {
+    const width = (data[16] << 24) | (data[17] << 16) | (data[18] << 8) | data[19];
+    const height = (data[20] << 24) | (data[21] << 16) | (data[22] << 8) | data[23];
+    if (width > 0 && height > 0) return { width, height };
+  }
+
+  // JPEG: find SOF marker (0xFF 0xC0 or 0xFF 0xC2)
+  if (data[0] === 0xff && data[1] === 0xd8) {
+    let offset = 2;
+    while (offset < data.length - 4) {
+      if (data[offset] !== 0xff) { offset += 1; continue; }
+      const marker = data[offset + 1];
+      if (marker === 0xc0 || marker === 0xc2) {
+        const height = (data[offset + 5] << 8) | data[offset + 6];
+        const width = (data[offset + 7] << 8) | data[offset + 8];
+        if (width > 0 && height > 0) return { width, height };
+        break;
+      }
+      const segLen = (data[offset + 2] << 8) | data[offset + 3];
+      offset += 2 + segLen;
+    }
+  }
+
+  return null;
+}
+
+function extractFigureNumber(text: string): string | null {
+  const match = text.trim().match(/^图\s*(\d+(?:[-—－]\d+)?)\s/);
+  if (!match) return null;
+  return match[1].replace(/[-—－]/g, "-");
+}
+
+function findMatchingImage(figureText: string, images: Record<string, ImageData>): ImageData | null {
+  const num = extractFigureNumber(figureText);
+  if (!num) return null;
+
+  const candidates = [`图${num}`, num, `图 ${num}`];
+  for (const key of candidates) {
+    const norm = key.trim().toLowerCase();
+    if (images[norm]) return images[norm];
+  }
+
+  // Fuzzy match: check if any key contains the number or vice versa
+  for (const [key, val] of Object.entries(images)) {
+    if (key.includes(num) || num.includes(key)) return val;
+  }
+
+  return null;
+}
+
+function buildImageParagraph(imageData: ImageData, maxWidthMm: number): Paragraph {
+  const buffer = Uint8Array.from(atob(imageData.base64), (c) => c.charCodeAt(0));
+  const dims = getImageDimensions(buffer);
+
+  const maxEmu = maxWidthMm * 36000; // 1mm = 36000 EMU
+  let widthEmu = maxEmu;
+  let heightEmu = round(maxEmu * 0.6); // default 60% of width
+
+  if (dims) {
+    const aspectRatio = dims.height / dims.width;
+    if (dims.width <= maxEmu) {
+      widthEmu = dims.width;
+      heightEmu = dims.height;
+    } else {
+      widthEmu = maxEmu;
+      heightEmu = round(maxEmu * aspectRatio);
+    }
+    // Cap height at 200mm
+    const maxHeightEmu = 200 * 36000;
+    if (heightEmu > maxHeightEmu) {
+      heightEmu = maxHeightEmu;
+      widthEmu = round(heightEmu / (dims.height / dims.width));
+    }
+  }
+
+  return new Paragraph({
+    alignment: AlignmentType.CENTER,
+    spacing: { before: 120, after: 60 },
+    children: [
+      new ImageRun({
+        type: imageData.type,
+        data: buffer,
+        transformation: {
+          width: round(widthEmu / 9525),  // EMU to pixels (1 pixel = 9525 EMU)
+          height: round(heightEmu / 9525),
+        },
+      }),
+    ],
+  });
+}
+
+const MAX_IMAGE_WIDTH_MM = 150;
+
+function buildBody(structured: StructuredDoc, images?: Record<string, ImageData>): FileChild[] {
   const paragraphs: FileChild[] = [];
   const referenceAnchorMap = buildReferenceAnchorMap(structured.blocks);
   const equationState = { current: 0 };
@@ -1612,6 +1715,12 @@ function buildBody(structured: StructuredDoc): FileChild[] {
     const figureCaption = parseFigureCaption(block.text);
     if (figureCaption) {
       figureIndex += 1;
+      if (images) {
+        const matched = findMatchingImage(block.text, images);
+        if (matched) {
+          paragraphs.push(buildImageParagraph(matched, MAX_IMAGE_WIDTH_MM));
+        }
+      }
       paragraphs.push(figureCaptionParagraph(figureIndex, figureCaption.title));
       continue;
     }
@@ -1725,7 +1834,7 @@ export async function buildDocx(structured: StructuredDoc, options: BuildDocxOpt
             ],
           }),
         },
-        children: buildBody(structured),
+        children: buildBody(structured, options.images),
       },
     ],
   });

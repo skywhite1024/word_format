@@ -1,7 +1,7 @@
 ﻿import JSZip from "jszip";
 import { describe, expect, it } from "vitest";
 import { buildDocx } from "../src/core/docx-builder";
-import type { StructuredDoc } from "../src/core/types";
+import type { ImageData, StructuredDoc } from "../src/core/types";
 
 describe("docx-builder", () => {
   it("should enforce black heading color, character indents, and numbered references", async () => {
@@ -728,5 +728,59 @@ describe("docx-builder", () => {
     expect(docContent).toContain("<m:rad>");
     expect(docContent).toContain("<m:nary>");
     expect(docContent).toContain('<m:chr m:val="∑"/>');
+  });
+
+  it("should embed image above figure caption when matching image exists", async () => {
+    // 1x1 red pixel PNG (67 bytes)
+    const tinyPngBase64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwADhQGAWjR9awAAAABJRU5ErkJggg==";
+    const images: Record<string, ImageData> = {
+      "图1": { base64: tinyPngBase64, type: "png" },
+    };
+
+    const structured: StructuredDoc = {
+      mode: "official",
+      title: "图片测试",
+      blocks: [
+        { type: "paragraph", level: 0, text: "图 1 测试图片。" },
+      ],
+      stats: { paragraphCount: 1, headingCount: 0, referenceCount: 0 },
+    };
+
+    const bytes = await buildDocx(structured, { images });
+    const zip = await JSZip.loadAsync(bytes);
+    const documentXml = await zip.file("word/document.xml")?.async("string");
+    const docContent = documentXml ?? "";
+
+    // Should contain image relationship
+    expect(docContent).toContain("wp:inline");
+    // Should contain figure caption
+    expect(docContent).toContain("图1 测试图片");
+    // Image should appear before caption in the XML
+    const imagePos = docContent.indexOf("wp:inline");
+    const captionPos = docContent.indexOf("图1 测试图片");
+    expect(imagePos).toBeGreaterThan(-1);
+    expect(captionPos).toBeGreaterThan(-1);
+    expect(imagePos).toBeLessThan(captionPos);
+  });
+
+  it("should not embed image when no matching image exists", async () => {
+    const structured: StructuredDoc = {
+      mode: "official",
+      title: "无图片测试",
+      blocks: [
+        { type: "paragraph", level: 0, text: "图 1 无匹配图片。" },
+      ],
+      stats: { paragraphCount: 1, headingCount: 0, referenceCount: 0 },
+    };
+
+    const bytes = await buildDocx(structured);
+    const zip = await JSZip.loadAsync(bytes);
+    const documentXml = await zip.file("word/document.xml")?.async("string");
+    const docContent = documentXml ?? "";
+
+    // Should contain caption
+    expect(docContent).toContain("图1 无匹配图片");
+    // Should NOT contain image
+    expect(docContent).not.toContain("wp:inline");
   });
 });

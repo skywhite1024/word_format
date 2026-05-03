@@ -14,6 +14,8 @@ const statusText = document.getElementById("statusText");
 const preview = document.getElementById("preview");
 const previewMeta = document.getElementById("previewMeta");
 const inputCounter = document.getElementById("inputCounter");
+const imageFilesInput = document.getElementById("imageFiles");
+const imagePreviewList = document.getElementById("imagePreviewList");
 
 const EMPTY_PREVIEW_HTML = `
   <div class="empty-state">
@@ -29,6 +31,76 @@ let lastMeta = null;
 let lastImport = null;
 let previewExpanded = false;
 const DEFAULT_PREVIEW_BLOCK_LIMIT = 220;
+
+const uploadedImages = new Map();
+
+function normalizeImageKey(name) {
+  return name.replace(/\.[^.]+$/, "").trim().toLowerCase();
+}
+
+function extractFigureNumber(text) {
+  const match = text.trim().match(/^图\s*(\d+(?:[-—－]\d+)?)\s/);
+  return match ? match[1].replace(/[-—－]/g, "-") : null;
+}
+
+function findMatchingImage(figureText, images) {
+  const num = extractFigureNumber(figureText);
+  if (!num) return null;
+  const candidates = [`图${num}`, num, `图 ${num}`, `图${num.replace(/-/g, "-")}`, num.replace(/-/g, "-")];
+  for (const key of candidates) {
+    const norm = key.trim().toLowerCase();
+    if (images.has(norm)) return images.get(norm);
+  }
+  for (const [key, val] of images) {
+    if (key.includes(num) || num.includes(key)) return val;
+  }
+  return null;
+}
+
+function renderImagePreviewList() {
+  if (uploadedImages.size === 0) {
+    imagePreviewList.innerHTML = "";
+    return;
+  }
+  const items = [];
+  for (const [key, img] of uploadedImages) {
+    items.push(`
+      <div class="image-preview-item" data-key="${escapeHtml(key)}">
+        <img src="data:image/${img.type};base64,${img.base64}" alt="${escapeHtml(key)}" />
+        <span class="image-preview-name">${escapeHtml(key)}</span>
+        <button type="button" class="image-remove-btn" data-key="${escapeHtml(key)}">删除</button>
+      </div>
+    `);
+  }
+  imagePreviewList.innerHTML = items.join("");
+}
+
+function handleImageUpload(event) {
+  const files = event.target.files;
+  if (!files || files.length === 0) return;
+
+  for (const file of files) {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const base64 = reader.result.replace(/^data:image\/[^;]+;base64,/, "");
+      const ext = file.name.split(".").pop().toLowerCase();
+      const typeMap = { jpg: "jpg", jpeg: "jpg", png: "png", gif: "gif", bmp: "bmp" };
+      const type = typeMap[ext] || "png";
+      const key = normalizeImageKey(file.name);
+      uploadedImages.set(key, { base64, type });
+      renderImagePreviewList();
+      setStatus(`已上传图片: ${file.name}`);
+    };
+    reader.readAsDataURL(file);
+  }
+  event.target.value = "";
+}
+
+function removeImage(key) {
+  uploadedImages.delete(key);
+  renderImagePreviewList();
+  setStatus(`已移除图片: ${key}`);
+}
 
 function escapeHtml(text) {
   return text
@@ -624,6 +696,10 @@ function renderStructuredPreview(structured, options = {}) {
     const figureCaption = parseFigureCaption(text);
     if (figureCaption) {
       figureIndex += 1;
+      const matched = findMatchingImage(text, uploadedImages);
+      if (matched) {
+        pieces.push(`<div class="figure-image"><img src="data:image/${matched.type};base64,${matched.base64}" alt="图${figureIndex}" /></div>`);
+      }
       pieces.push(`<p class="caption paragraph-no-indent">图${figureIndex} ${formatInlineContent(figureCaption.title)}</p>`);
       continue;
     }
@@ -815,6 +891,7 @@ async function downloadDocx() {
         useLlm: !!useLlmInput.checked,
         mathItalic: !!mathItalicInput.checked,
         structured: lastStructured,
+        images: uploadedImages.size > 0 ? Object.fromEntries(uploadedImages) : undefined,
       }),
     });
 
@@ -1005,6 +1082,8 @@ function clearContent() {
   inputText.value = "";
   shareLink.value = "";
   lastImport = null;
+  uploadedImages.clear();
+  renderImagePreviewList();
   updateCounter();
   setPreviewMeta(null);
   createEmptyPreview();
@@ -1055,6 +1134,16 @@ inputText.addEventListener("input", () => {
       refreshPreview({ silent: true });
     }
   });
+});
+
+imageFilesInput.addEventListener("change", handleImageUpload);
+
+imagePreviewList.addEventListener("click", (event) => {
+  const target = event.target instanceof Element ? event.target : null;
+  const btn = target?.closest(".image-remove-btn");
+  if (btn) {
+    removeImage(btn.dataset.key);
+  }
 });
 
 updateCounter();

@@ -84,6 +84,12 @@
               ></textarea>
             </label>
 
+            <label class="field">
+              <span>图片上传（文件名与图注编号对应，如 图1.png 对应文本中的 图1 ...）</span>
+              <input id="imageFiles" type="file" accept="image/png,image/jpeg,image/gif,image/bmp" multiple />
+            </label>
+            <div id="imagePreviewList" class="image-preview-list"></div>
+
             <div class="toolbar">
               <button id="formatBtn" type="button">刷新预览</button>
               <button id="repairBtn" type="button" class="secondary-btn">深度乱码修复</button>
