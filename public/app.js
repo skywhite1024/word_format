@@ -773,12 +773,33 @@ function renderStructuredPreview(structured, options = {}) {
   return pieces.join("");
 }
 
+function getImageTotalSizeMB() {
+  if (uploadedImages.size === 0) return 0;
+  let totalBase64Len = 0;
+  for (const [, img] of uploadedImages) {
+    totalBase64Len += img.base64.length;
+  }
+  return (totalBase64Len * 3 / 4) / (1024 * 1024);
+}
+
+function buildImageSizeWarning() {
+  const sizeMB = getImageTotalSizeMB();
+  if (sizeMB <= 5) return "";
+  const level = sizeMB > 15 ? "error" : "warn";
+  const icon = level === "error" ? "!!" : "!";
+  const msg = level === "error"
+    ? `图片数据总量约 ${sizeMB.toFixed(1)}MB，过大可能导致导出超时或失败。建议减少图片数量或压缩图片后再导出。`
+    : `图片数据总量约 ${sizeMB.toFixed(1)}MB，导出可能较慢，请耐心等待。`;
+  return `<div class="image-size-warning image-size-warning--${level}">${icon} ${escapeHtml(msg)}</div>`;
+}
+
 function paintPreview() {
   if (!lastStructured) {
     preview.innerHTML = EMPTY_PREVIEW_HTML;
     return;
   }
-  preview.innerHTML = renderStructuredPreview(lastStructured, { expanded: previewExpanded });
+  const warning = buildImageSizeWarning();
+  preview.innerHTML = warning + renderStructuredPreview(lastStructured, { expanded: previewExpanded });
 }
 
 function renderPreview(structured, meta) {
@@ -905,15 +926,12 @@ async function downloadDocx() {
     return;
   }
 
-  // Check total image data size before sending
-  if (uploadedImages.size > 0) {
-    let totalBase64Len = 0;
-    for (const [, img] of uploadedImages) {
-      totalBase64Len += img.base64.length;
-    }
-    const totalBytes = Math.floor(totalBase64Len * 3 / 4);
-    if (totalBytes > 15 * 1024 * 1024) {
-      setStatus("图片数据总量过大（超过 15MB），请减少图片数量或使用更小的图片。");
+  // Warn user if image data is very large, but allow them to try
+  const sizeMB = getImageTotalSizeMB();
+  if (sizeMB > 15) {
+    const proceed = confirm(`图片数据总量约 ${sizeMB.toFixed(1)}MB，过大可能导致导出超时或失败。\n是否仍要尝试导出？`);
+    if (!proceed) {
+      setStatus("已取消导出。");
       return;
     }
   }
