@@ -76,41 +76,85 @@ function renderImagePreviewList() {
   imagePreviewList.innerHTML = items.join("");
 }
 
-const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024; // 5MB
+const MAX_IMAGE_SIZE_BYTES = 20 * 1024 * 1024; // 20MB (before compression)
+const COMPRESS_MAX_WIDTH = 1500;
+const COMPRESS_QUALITY = 0.8;
+const COMPRESS_THRESHOLD_BYTES = 1024 * 1024; // 1MB
+
+function compressImage(dataUrl, fileName) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      let { width, height } = img;
+      const needsResize = width > COMPRESS_MAX_WIDTH;
+      if (needsResize) {
+        height = Math.round(height * (COMPRESS_MAX_WIDTH / width));
+        width = COMPRESS_MAX_WIDTH;
+      }
+
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(img, 0, 0, width, height);
+
+      const ext = fileName.split(".").pop().toLowerCase();
+      const isPhoto = ext === "jpg" || ext === "jpeg" || dataUrl.startsWith("data:image/jpeg");
+      const useJpeg = isPhoto || ext === "bmp";
+
+      const outputType = useJpeg ? "image/jpeg" : "image/png";
+      const quality = useJpeg ? COMPRESS_QUALITY : undefined;
+      const outputUrl = canvas.toDataURL(outputType, quality);
+
+      const base64 = outputUrl.replace(/^data:image\/[^;]+;base64,/, "");
+      const outType = useJpeg ? "jpg" : "png";
+      resolve({ base64, type: outType, width, height });
+    };
+    img.onerror = () => reject(new Error("图片加载失败"));
+    img.src = dataUrl;
+  });
+}
 
 function handleImageUpload(event) {
   const files = event.target.files;
   if (!files || files.length === 0) return;
 
-  let uploadedCount = 0;
   let pendingCount = files.length;
 
   for (const file of files) {
     if (file.size > MAX_IMAGE_SIZE_BYTES) {
-      setStatus(`图片 ${file.name} 超过 5MB 限制，已跳过。`);
+      setStatus(`图片 ${file.name} 超过 20MB 限制，已跳过。`);
       pendingCount -= 1;
-      if (pendingCount === 0 && uploadedCount > 0) {
-        paintPreview();
-      }
+      if (pendingCount === 0) paintPreview();
       continue;
     }
 
     const reader = new FileReader();
-    reader.onload = () => {
-      const base64 = reader.result.replace(/^data:image\/[^;]+;base64,/, "");
-      const ext = file.name.split(".").pop().toLowerCase();
-      const typeMap = { jpg: "jpg", jpeg: "jpg", png: "png", gif: "gif", bmp: "bmp" };
-      const type = typeMap[ext] || "png";
+    reader.onload = async () => {
+      const dataUrl = reader.result;
       const key = normalizeImageKey(file.name);
-      uploadedImages.set(key, { base64, type });
-      uploadedCount += 1;
-      renderImagePreviewList();
-      setStatus(`已上传图片: ${file.name}（共 ${uploadedImages.size} 张）`);
-      // Refresh preview after last file is processed
-      pendingCount -= 1;
-      if (pendingCount === 0) {
-        paintPreview();
+      try {
+        const needsCompress = file.size > COMPRESS_THRESHOLD_BYTES;
+        if (needsCompress) {
+          setStatus(`正在压缩图片: ${file.name}...`);
+          const compressed = await compressImage(dataUrl, file.name);
+          uploadedImages.set(key, { base64: compressed.base64, type: compressed.type });
+          const savedMB = ((file.size - compressed.base64.length * 3 / 4) / 1024 / 1024).toFixed(1);
+          setStatus(`已压缩 ${file.name}（节省 ${savedMB}MB，共 ${uploadedImages.size} 张）`);
+        } else {
+          const base64 = dataUrl.replace(/^data:image\/[^;]+;base64,/, "");
+          const ext = file.name.split(".").pop().toLowerCase();
+          const typeMap = { jpg: "jpg", jpeg: "jpg", png: "png", gif: "gif", bmp: "bmp" };
+          const type = typeMap[ext] || "png";
+          uploadedImages.set(key, { base64, type });
+          setStatus(`已上传图片: ${file.name}（共 ${uploadedImages.size} 张）`);
+        }
+      } catch (err) {
+        setStatus(`图片 ${file.name} 处理失败: ${err instanceof Error ? err.message : "未知错误"}`);
       }
+      renderImagePreviewList();
+      pendingCount -= 1;
+      if (pendingCount === 0) paintPreview();
     };
     reader.readAsDataURL(file);
   }
@@ -784,11 +828,11 @@ function getImageTotalSizeMB() {
 
 function buildImageSizeWarning() {
   const sizeMB = getImageTotalSizeMB();
-  if (sizeMB <= 5) return "";
-  const level = sizeMB > 15 ? "error" : "warn";
+  if (sizeMB <= 8) return "";
+  const level = sizeMB > 20 ? "error" : "warn";
   const icon = level === "error" ? "!!" : "!";
   const msg = level === "error"
-    ? `图片数据总量约 ${sizeMB.toFixed(1)}MB，过大可能导致导出超时或失败。建议减少图片数量或压缩图片后再导出。`
+    ? `图片数据总量约 ${sizeMB.toFixed(1)}MB，过大可能导致导出超时或失败。建议减少图片数量。`
     : `图片数据总量约 ${sizeMB.toFixed(1)}MB，导出可能较慢，请耐心等待。`;
   return `<div class="image-size-warning image-size-warning--${level}">${icon} ${escapeHtml(msg)}</div>`;
 }
@@ -928,7 +972,7 @@ async function downloadDocx() {
 
   // Warn user if image data is very large, but allow them to try
   const sizeMB = getImageTotalSizeMB();
-  if (sizeMB > 15) {
+  if (sizeMB > 20) {
     const proceed = confirm(`图片数据总量约 ${sizeMB.toFixed(1)}MB，过大可能导致导出超时或失败。\n是否仍要尝试导出？`);
     if (!proceed) {
       setStatus("已取消导出。");
