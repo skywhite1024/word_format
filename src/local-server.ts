@@ -1,6 +1,7 @@
 import * as http from "node:http";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { execSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { analyzeText, sanitizeMarkdownText } from "./core/analyzer";
 import { buildDocx } from "./core/docx-builder";
@@ -194,7 +195,6 @@ async function buildStructuredResult(payload: FormatPayload): Promise<{
 
 function openBrowser(url: string) {
   try {
-    const { execSync } = require("node:child_process");
     if (process.platform === "win32") {
       execSync(`start "" "${url}"`, { stdio: "ignore" });
     } else if (process.platform === "darwin") {
