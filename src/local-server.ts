@@ -1,6 +1,7 @@
 import * as http from "node:http";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import * as crypto from "node:crypto";
 import { execSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { analyzeText, sanitizeMarkdownText } from "./core/analyzer";
@@ -13,9 +14,15 @@ import type { ImageData, Mode, StructuredDoc } from "./core/types";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.resolve(__dirname, "../public");
+const IMAGE_TEMP_DIR = path.resolve(__dirname, "../.image-uploads");
 
 const HOST = "127.0.0.1";
 const PORT = Number(process.env.PORT || "8788");
+
+// Ensure temp dir exists
+if (!fs.existsSync(IMAGE_TEMP_DIR)) {
+  fs.mkdirSync(IMAGE_TEMP_DIR, { recursive: true });
+}
 
 const MIME_TYPES: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
@@ -24,6 +31,9 @@ const MIME_TYPES: Record<string, string> = {
   ".json": "application/json; charset=utf-8",
   ".png": "image/png",
   ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".gif": "image/gif",
+  ".bmp": "image/bmp",
   ".svg": "image/svg+xml",
   ".ico": "image/x-icon",
 };
@@ -60,20 +70,6 @@ function sanitizeBoolean(input: unknown, defaultValue: boolean): boolean {
   return defaultValue;
 }
 
-function sanitizeImages(input: unknown): Record<string, ImageData> | undefined {
-  if (!input || typeof input !== "object") return undefined;
-  const result: Record<string, ImageData> = {};
-  for (const [key, value] of Object.entries(input as Record<string, unknown>)) {
-    if (!value || typeof value !== "object") continue;
-    const img = value as { base64?: unknown; type?: unknown };
-    if (typeof img.base64 !== "string" || !img.base64) continue;
-    const validTypes = new Set(["jpg", "png", "gif", "bmp"]);
-    const type = validTypes.has(img.type as string) ? (img.type as ImageData["type"]) : "png";
-    result[key.trim().toLowerCase()] = { base64: img.base64, type };
-  }
-  return Object.keys(result).length > 0 ? result : undefined;
-}
-
 interface FormatPayload {
   text: string;
   mode: Mode;
@@ -82,6 +78,7 @@ interface FormatPayload {
   useOriginalCaptionIndex: boolean;
   structured?: StructuredDoc;
   images?: Record<string, ImageData>;
+  imageIds?: string[];
 }
 
 function parseFormatPayload(body: string): FormatPayload | null {
@@ -89,14 +86,37 @@ function parseFormatPayload(body: string): FormatPayload | null {
   const rawText = typeof payload.text === "string" ? payload.text : "";
   const text = sanitizeMarkdownText(rawText);
   if (!text.trim()) return null;
-  if (text.length > 2_000_000) throw new Error("文本过长，限制为 2000000 字符。");
+  if (text.length > 10_000_000) throw new Error("文本过长。");
+
+  const imageIds = Array.isArray(payload.imageIds)
+    ? (payload.imageIds as unknown[]).filter((id): id is string => typeof id === "string")
+    : undefined;
+
+  // Load images from disk by ID
+  let images: Record<string, ImageData> | undefined;
+  if (imageIds && imageIds.length > 0) {
+    images = {};
+    for (const id of imageIds) {
+      const metaPath = path.join(IMAGE_TEMP_DIR, `${id}.json`);
+      if (!fs.existsSync(metaPath)) continue;
+      const meta = JSON.parse(fs.readFileSync(metaPath, "utf-8")) as { name: string; type: string; filePath: string };
+      if (!fs.existsSync(meta.filePath)) continue;
+      const buffer = fs.readFileSync(meta.filePath);
+      const base64 = buffer.toString("base64");
+      const key = meta.name.replace(/\.[^.]+$/, "").trim().toLowerCase();
+      images[key] = { base64, type: meta.type as ImageData["type"] };
+    }
+    if (Object.keys(images).length === 0) images = undefined;
+  }
+
   return {
     text,
     mode: sanitizeMode(payload.mode),
     useLlm: sanitizeBoolean(payload.useLlm, true),
     mathItalic: sanitizeBoolean(payload.mathItalic, true),
     useOriginalCaptionIndex: sanitizeBoolean(payload.useOriginalCaptionIndex, false),
-    images: sanitizeImages(payload.images),
+    structured: undefined,
+    images,
   };
 }
 
@@ -130,10 +150,14 @@ function sanitizeStructuredPayload(input: unknown): StructuredDoc | undefined {
   };
 }
 
-async function readBody(req: http.IncomingMessage): Promise<string> {
+async function readBodyBuffer(req: http.IncomingMessage): Promise<Buffer> {
   const chunks: Buffer[] = [];
   for await (const chunk of req) chunks.push(Buffer.from(chunk));
-  return Buffer.concat(chunks).toString("utf-8");
+  return Buffer.concat(chunks);
+}
+
+async function readBody(req: http.IncomingMessage): Promise<string> {
+  return (await readBodyBuffer(req)).toString("utf-8");
 }
 
 function serveStaticFile(req: http.IncomingMessage, res: http.ServerResponse) {
@@ -212,6 +236,70 @@ const server = http.createServer(async (req, res) => {
   const { pathname } = url;
 
   try {
+    // POST /api/upload-image — raw binary upload
+    if (pathname === "/api/upload-image" && req.method === "POST") {
+      const rawName = req.headers["x-image-name"];
+      const imageName = decodeURIComponent(Array.isArray(rawName) ? rawName[0] || "image" : rawName || "image");
+      const rawType = req.headers["x-image-type"];
+      const imageType = (Array.isArray(rawType) ? rawType[0] || "png" : rawType || "png").toLowerCase();
+
+      const validTypes = new Set(["jpg", "png", "gif", "bmp"]);
+      const type = validTypes.has(imageType) ? imageType : "png";
+
+      const buffer = await readBodyBuffer(req);
+      if (buffer.length === 0) return badRequest(res, "图片数据为空");
+
+      const id = crypto.randomBytes(8).toString("hex");
+      const ext = type === "jpg" ? "jpg" : type;
+      const filePath = path.join(IMAGE_TEMP_DIR, `${id}.${ext}`);
+
+      fs.writeFileSync(filePath, buffer);
+      fs.writeFileSync(path.join(IMAGE_TEMP_DIR, `${id}.json`), JSON.stringify({
+        name: imageName,
+        type,
+        filePath,
+        size: buffer.length,
+      }));
+
+      const name = imageName.replace(/\.[^.]+$/, "").trim().toLowerCase();
+      console.log(`[图片] 已上传: ${name}.${type} (${(buffer.length / 1024).toFixed(0)}KB) -> ${id}`);
+
+      return jsonResponse(res, { id, name, type, size: buffer.length });
+    }
+
+    // GET /api/image/:id — serve uploaded image
+    if (pathname.startsWith("/api/image/") && req.method === "GET") {
+      const id = pathname.split("/")[3];
+      if (!id) { res.writeHead(404); return res.end("Not Found"); }
+
+      const metaPath = path.join(IMAGE_TEMP_DIR, `${id}.json`);
+      if (!fs.existsSync(metaPath)) { res.writeHead(404); return res.end("Not Found"); }
+
+      const meta = JSON.parse(fs.readFileSync(metaPath, "utf-8")) as { filePath: string; type: string };
+      if (!fs.existsSync(meta.filePath)) { res.writeHead(404); return res.end("Not Found"); }
+
+      const content = fs.readFileSync(meta.filePath);
+      res.writeHead(200, {
+        "Content-Type": `image/${meta.type === "jpg" ? "jpeg" : meta.type}`,
+        "Cache-Control": "public, max-age=3600",
+      });
+      return res.end(content);
+    }
+
+    // DELETE /api/image/:id — delete uploaded image
+    if (pathname.startsWith("/api/image/") && req.method === "DELETE") {
+      const id = pathname.split("/")[3];
+      if (!id) return badRequest(res, "missing id");
+
+      const metaPath = path.join(IMAGE_TEMP_DIR, `${id}.json`);
+      if (fs.existsSync(metaPath)) {
+        const meta = JSON.parse(fs.readFileSync(metaPath, "utf-8")) as { filePath: string };
+        if (fs.existsSync(meta.filePath)) fs.unlinkSync(meta.filePath);
+        fs.unlinkSync(metaPath);
+      }
+      return jsonResponse(res, { ok: true });
+    }
+
     // POST /api/format
     if (pathname === "/api/format" && req.method === "POST") {
       const body = await readBody(req);

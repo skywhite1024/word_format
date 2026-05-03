@@ -34,6 +34,7 @@ let previewExpanded = false;
 const DEFAULT_PREVIEW_BLOCK_LIMIT = 220;
 
 const uploadedImages = new Map();
+const isLocalMode = window.location.hostname === "127.0.0.1" || window.location.hostname === "localhost";
 
 function normalizeImageKey(name) {
   return name.replace(/\.[^.]+$/, "").trim().toLowerCase();
@@ -58,6 +59,11 @@ function findMatchingImage(figureText, images) {
   return null;
 }
 
+function getImageSrc(img) {
+  if (isLocalMode && img.id) return `/api/image/${img.id}`;
+  return `data:image/${img.type};base64,${img.base64}`;
+}
+
 function renderImagePreviewList() {
   if (uploadedImages.size === 0) {
     imagePreviewList.innerHTML = "";
@@ -67,7 +73,7 @@ function renderImagePreviewList() {
   for (const [key, img] of uploadedImages) {
     items.push(`
       <div class="image-preview-item" data-key="${escapeHtml(key)}">
-        <img src="data:image/${img.type};base64,${img.base64}" alt="${escapeHtml(key)}" />
+        <img src="${getImageSrc(img)}" alt="${escapeHtml(key)}" />
         <span class="image-preview-name">${escapeHtml(key)}</span>
         <button type="button" class="image-remove-btn" data-key="${escapeHtml(key)}">删除</button>
       </div>
@@ -115,9 +121,58 @@ function compressImage(dataUrl, fileName) {
   });
 }
 
+async function uploadImageLocal(file) {
+  const ext = file.name.split(".").pop().toLowerCase();
+  const typeMap = { jpg: "jpg", jpeg: "jpg", png: "png", gif: "gif", bmp: "bmp" };
+  const type = typeMap[ext] || "png";
+  const key = normalizeImageKey(file.name);
+
+  const response = await fetch("/api/upload-image", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/octet-stream",
+      "X-Image-Name": encodeURIComponent(file.name),
+      "X-Image-Type": type,
+    },
+    body: file,
+  });
+
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.error || "上传失败");
+  }
+
+  const result = await response.json();
+  uploadedImages.set(key, { id: result.id, name: result.name, type: result.type });
+  return result;
+}
+
 function handleImageUpload(event) {
   const files = event.target.files;
   if (!files || files.length === 0) return;
+
+  if (isLocalMode) {
+    let pendingCount = files.length;
+    for (const file of files) {
+      const key = normalizeImageKey(file.name);
+      setStatus(`正在上传图片: ${file.name}...`);
+      uploadImageLocal(file)
+        .then((result) => {
+          const sizeKB = (result.size / 1024).toFixed(0);
+          setStatus(`已上传 ${file.name}（${sizeKB}KB，共 ${uploadedImages.size} 张）`);
+        })
+        .catch((err) => {
+          setStatus(`图片 ${file.name} 上传失败: ${err.message}`);
+        })
+        .finally(() => {
+          renderImagePreviewList();
+          pendingCount -= 1;
+          if (pendingCount === 0) paintPreview();
+        });
+    }
+    event.target.value = "";
+    return;
+  }
 
   let pendingCount = files.length;
 
@@ -169,6 +224,10 @@ function handleImageUpload(event) {
 }
 
 function removeImage(key) {
+  const img = uploadedImages.get(key);
+  if (isLocalMode && img?.id) {
+    fetch(`/api/image/${img.id}`, { method: "DELETE" }).catch(() => {});
+  }
   uploadedImages.delete(key);
   renderImagePreviewList();
   setStatus(`已移除图片: ${key}`);
@@ -775,7 +834,7 @@ function renderStructuredPreview(structured, options = {}) {
       const figureLabel = useOriginalCaptionIndexInput.checked && figureCaption.index ? figureCaption.index : figureIndex;
       const matched = findMatchingImage(text, uploadedImages);
       if (matched) {
-        pieces.push(`<div class="figure-image"><img src="data:image/${matched.type};base64,${matched.base64}" alt="图${figureLabel}" /></div>`);
+        pieces.push(`<div class="figure-image"><img src="${getImageSrc(matched)}" alt="图${figureLabel}" /></div>`);
       }
       pieces.push(`<p class="caption paragraph-no-indent">图${figureLabel} ${formatInlineContent(figureCaption.title)}</p>`);
       continue;
@@ -826,14 +885,16 @@ function renderStructuredPreview(structured, options = {}) {
 
 function getImageTotalSizeMB() {
   if (uploadedImages.size === 0) return 0;
+  if (isLocalMode) return 0; // images stored on disk, not in memory
   let totalBase64Len = 0;
   for (const [, img] of uploadedImages) {
-    totalBase64Len += img.base64.length;
+    totalBase64Len += img.base64?.length || 0;
   }
   return (totalBase64Len * 3 / 4) / (1024 * 1024);
 }
 
 function buildImageSizeWarning() {
+  if (isLocalMode) return "";
   const sizeMB = getImageTotalSizeMB();
   if (sizeMB <= 8) return "";
   const level = sizeMB > 20 ? "error" : "warn";
@@ -977,13 +1038,15 @@ async function downloadDocx() {
     return;
   }
 
-  // Warn user if image data is very large, but allow them to try
-  const sizeMB = getImageTotalSizeMB();
-  if (sizeMB > 20) {
-    const proceed = confirm(`图片数据总量约 ${sizeMB.toFixed(1)}MB，过大可能导致导出超时或失败。\n是否仍要尝试导出？`);
-    if (!proceed) {
-      setStatus("已取消导出。");
-      return;
+  // In remote mode, warn user if image data is very large
+  if (!isLocalMode) {
+    const sizeMB = getImageTotalSizeMB();
+    if (sizeMB > 20) {
+      const proceed = confirm(`图片数据总量约 ${sizeMB.toFixed(1)}MB，过大可能导致导出超时或失败。\n是否仍要尝试导出？`);
+      if (!proceed) {
+        setStatus("已取消导出。");
+        return;
+      }
     }
   }
 
@@ -991,7 +1054,12 @@ async function downloadDocx() {
   setStatus("正在生成 Word 文档...");
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 120000); // 2 min timeout
+    const timeoutId = setTimeout(() => controller.abort(), isLocalMode ? 300000 : 120000);
+
+    // In local mode, send imageIds (server loads from disk); in remote mode, send base64 images
+    const imagePayload = isLocalMode
+      ? { imageIds: Array.from(uploadedImages.values()).filter(img => img.id).map(img => img.id) }
+      : { images: uploadedImages.size > 0 ? Object.fromEntries(uploadedImages) : undefined };
 
     const response = await fetch("/api/format/docx", {
       method: "POST",
@@ -1003,7 +1071,7 @@ async function downloadDocx() {
         mathItalic: !!mathItalicInput.checked,
         useOriginalCaptionIndex: !!useOriginalCaptionIndexInput.checked,
         structured: lastStructured,
-        images: uploadedImages.size > 0 ? Object.fromEntries(uploadedImages) : undefined,
+        ...imagePayload,
       }),
       signal: controller.signal,
     });
@@ -1205,6 +1273,11 @@ function clearContent() {
   inputText.value = "";
   shareLink.value = "";
   lastImport = null;
+  if (isLocalMode) {
+    for (const [, img] of uploadedImages) {
+      if (img.id) fetch(`/api/image/${img.id}`, { method: "DELETE" }).catch(() => {});
+    }
+  }
   uploadedImages.clear();
   renderImagePreviewList();
   updateCounter();

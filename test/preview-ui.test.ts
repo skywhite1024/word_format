@@ -36,7 +36,7 @@ function loadPreviewContext(): {
       },
       createElement: createElementStub,
     },
-    window: { open: () => null },
+    window: { open: () => null, location: { hostname: "example.com" } },
   });
 
   vm.runInContext(code, context);

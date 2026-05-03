@@ -11,3 +11,7 @@ demo_output*.docx
 # Python caches
 __pycache__/
 *.pyc
+
+# Local server temp files
+.image-uploads/
+.test-images/
