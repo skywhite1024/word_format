@@ -3,33 +3,30 @@ set -e
 cd "$(dirname "$0")"
 
 echo ""
-echo "╔══════════════════════════════════════════════╗"
-echo "║     Word Format - 文档格式解析 所见即所得      ║"
-echo "╚══════════════════════════════════════════════╝"
+echo "========================================"
+echo "  Word Format - Local Server"
+echo "========================================"
 echo ""
 
-# 检查 Node.js
 if ! command -v node &>/dev/null; then
-    echo "[错误] 未检测到 Node.js，请先安装 Node.js (https://nodejs.org)"
-    echo "       建议安装 LTS 版本。"
-    read -p "按回车键退出..."
+    echo "  [ERROR] Node.js not found."
+    echo "  Please install from https://nodejs.org"
+    read -p "  Press Enter to exit..."
     exit 1
 fi
 
-echo "[√] Node.js 版本: $(node -v)"
+echo "  [OK] Node.js: $(node -v)"
 
-# 检查并安装依赖
 if [ ! -d "node_modules" ]; then
-    echo "[..] 首次运行，正在安装依赖..."
+    echo "  [..] First run, installing dependencies..."
     npm install --production=false
-    echo "[√] 依赖安装完成。"
+    echo "  [OK] Dependencies installed."
 else
-    echo "[√] 依赖已就绪。"
+    echo "  [OK] Dependencies ready."
 fi
 
 echo ""
-echo "[..] 正在启动本地服务..."
+echo "  [..] Starting local server..."
 echo ""
 
-# 启动本地服务器
 node node_modules/tsx/dist/cli.mjs src/local-server.ts
