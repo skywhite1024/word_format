@@ -141,6 +141,8 @@ function isLikelyTitle(paragraph: string): boolean {
   } else if (headingLevel(p) !== null) {
     return false;
   }
+  // Don't treat figure/table captions as titles
+  if (/^[图表]\s*\d+/.test(p)) return false;
   if (/^(?:\d+[.)]|[（(]\d+[）)]|[一二三四五六七八九十百]+、)\s*/.test(p)) {
     return false;
   }
