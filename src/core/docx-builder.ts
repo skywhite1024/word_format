@@ -1632,14 +1632,17 @@ function buildImageParagraph(imageData: ImageData, maxWidthMm: number): Paragrap
   const dims = getImageDimensions(buffer);
 
   const maxEmu = maxWidthMm * 36000; // 1mm = 36000 EMU
+  const PIXEL_TO_EMU = 9525;
   let widthEmu = maxEmu;
   let heightEmu = round(maxEmu * 0.6); // default 60% of width
 
   if (dims) {
+    const srcWidthEmu = dims.width * PIXEL_TO_EMU;
+    const srcHeightEmu = dims.height * PIXEL_TO_EMU;
     const aspectRatio = dims.height / dims.width;
-    if (dims.width <= maxEmu) {
-      widthEmu = dims.width;
-      heightEmu = dims.height;
+    if (srcWidthEmu <= maxEmu) {
+      widthEmu = srcWidthEmu;
+      heightEmu = srcHeightEmu;
     } else {
       widthEmu = maxEmu;
       heightEmu = round(maxEmu * aspectRatio);

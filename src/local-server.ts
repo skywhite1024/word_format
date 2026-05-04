@@ -316,10 +316,13 @@ const server = http.createServer(async (req, res) => {
     // POST /api/format/docx
     if (pathname === "/api/format/docx" && req.method === "POST") {
       const body = await readBody(req);
+      const rawPayload = JSON.parse(body) as Record<string, unknown>;
+      console.log(`[导出] 收到请求: text=${typeof rawPayload.text === 'string' ? rawPayload.text.length + 'chars' : 'missing'}, imageIds=${Array.isArray(rawPayload.imageIds) ? rawPayload.imageIds.length + '个' : '无'}, images=${rawPayload.images ? Object.keys(rawPayload.images as object).length + '个(base64)' : '无'}, structured=${rawPayload.structured ? '有' : '无'}`);
       const payload = parseFormatPayload(body);
       if (!payload) return badRequest(res, "text 不能为空");
+      console.log(`[导出] 解析结果: images=${payload.images ? Object.keys(payload.images).length + '个' : '无'}, keys=${payload.images ? Object.keys(payload.images).join(',') : 'N/A'}`);
 
-      const structuredPayload = (JSON.parse(body) as { structured?: unknown }).structured;
+      const structuredPayload = (rawPayload as { structured?: unknown }).structured;
       const result = structuredPayload
         ? { structured: sanitizeStructuredPayload(structuredPayload)!, engine: "preview" as const, fallbackReason: undefined }
         : await buildStructuredResult(payload);
