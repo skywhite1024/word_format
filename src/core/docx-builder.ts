@@ -222,7 +222,10 @@ function extractEquationText(raw: string): string {
 }
 
 function normalizeLatexInlineMathDelimiters(text: string): string {
-  return text.replace(/\\\(([\s\S]*?)\\\)/g, (_match, inner: string) => `$${inner.trim()}$`);
+  return text.replace(/\\{1,2}\(([\s\S]*?)\\{1,2}\)/g, (_match, inner: string) => {
+    const normalizedInner = inner.trim().replace(/\\\\(?=[()[\]A-Za-z|])/g, "\\");
+    return `$${normalizedInner}$`;
+  });
 }
 
 function normalizeInlineFormulaText(text: string): string {

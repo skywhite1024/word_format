@@ -5,7 +5,10 @@ const THESIS_HINTS = ["摘要", "ABSTRACT", "目录", "参考文献", "关键词
 const MD_HEADING_PREFIX = "@@MDHEADING@@";
 
 function normalizeLatexInlineMathDelimiters(text: string): string {
-  return text.replace(/\\\(([\s\S]*?)\\\)/g, (_match, inner: string) => `$${inner.trim()}$`);
+  return text.replace(/\\{1,2}\(([\s\S]*?)\\{1,2}\)/g, (_match, inner: string) => {
+    const normalizedInner = inner.trim().replace(/\\\\(?=[()[\]A-Za-z|])/g, "\\");
+    return `$${normalizedInner}$`;
+  });
 }
 
 function stripCitationArtifacts(text: string): string {

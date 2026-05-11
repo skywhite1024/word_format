@@ -173,8 +173,10 @@ describe("analyzeText", () => {
 
   it("should normalize latex inline math delimiters without adding real parentheses", () => {
     const raw = String.raw`式中 \(r_t(\theta)\) 是新旧策略概率比，\(\hat{A}_t\) 是优势函数估计，\(\epsilon\) 用于限制更新幅度。`;
+    const doubleEscapedRaw = String.raw`式中 \\(r_t(\\theta)\\) 是新旧策略概率比，\\(\\hat{A}_t\\) 是优势函数估计，\\(\\epsilon\\) 用于限制更新幅度。`;
 
     const cleaned = sanitizeMarkdownText(raw);
+    const doubleEscapedCleaned = sanitizeMarkdownText(doubleEscapedRaw);
 
     expect(cleaned).toContain(String.raw`$r_t(\theta)$`);
     expect(cleaned).toContain(String.raw`$\hat{A}_t$`);
@@ -182,6 +184,11 @@ describe("analyzeText", () => {
     expect(cleaned).not.toContain(String.raw`\(`);
     expect(cleaned).not.toContain(String.raw`\)`);
     expect(cleaned).not.toContain(String.raw`(r_t(\theta))`);
+    expect(doubleEscapedCleaned).toContain(String.raw`$r_t(\theta)$`);
+    expect(doubleEscapedCleaned).toContain(String.raw`$\hat{A}_t$`);
+    expect(doubleEscapedCleaned).toContain(String.raw`$\epsilon$`);
+    expect(doubleEscapedCleaned).not.toContain(String.raw`\\(`);
+    expect(doubleEscapedCleaned).not.toContain(String.raw`\\)`);
   });
 
   it("should detect chapter heading with spaces as level-1 heading", () => {

@@ -115,7 +115,7 @@ describe("docx-builder", () => {
         {
           type: "paragraph",
           level: 0,
-          text: String.raw`式中 \(r_t(\theta)\) 是新旧策略概率比，\(\hat{A}_t\) 是优势函数估计，\(\epsilon\) 用于限制更新幅度。`,
+          text: String.raw`式中 \\(r_t(\\theta)\\) 是新旧策略概率比，\\(\\hat{A}_t\\) 是优势函数估计，\\(\\epsilon\\) 用于限制更新幅度。`,
         },
       ],
       stats: { paragraphCount: 1, headingCount: 0, referenceCount: 0 },

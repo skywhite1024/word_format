@@ -244,7 +244,10 @@ function escapeHtml(text) {
 }
 
 function normalizeLatexInlineMathDelimiters(text) {
-  return text.replace(/\\\(([\s\S]*?)\\\)/g, (_match, inner) => `$${inner.trim()}$`);
+  return text.replace(/\\{1,2}\(([\s\S]*?)\\{1,2}\)/g, (_match, inner) => {
+    const normalizedInner = inner.trim().replace(/\\\\(?=[()[\]A-Za-z|])/g, "\\");
+    return `$${normalizedInner}$`;
+  });
 }
 
 function setStatus(message) {

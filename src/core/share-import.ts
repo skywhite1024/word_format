@@ -57,7 +57,10 @@ function decodeHtmlEntities(text: string): string {
 function normalizeImportedMathDelimiters(text: string): string {
   return text
     .replace(/\\\\(?=[()[\]A-Za-z])/g, "\\")
-    .replace(/\\\(([\s\S]*?)\\\)/g, (_match, inner: string) => `$${inner.trim()}$`)
+    .replace(/\\{1,2}\(([\s\S]*?)\\{1,2}\)/g, (_match, inner: string) => {
+      const normalizedInner = inner.trim().replace(/\\\\(?=[()[\]A-Za-z|])/g, "\\");
+      return `$${normalizedInner}$`;
+    })
     .replace(/\\\[\s*([\s\S]*?)\s*\\\]/g, (_match, inner: string) => `[\n${inner.trim()}\n]`);
 }
 
