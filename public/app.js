@@ -243,6 +243,10 @@ function escapeHtml(text) {
     .replace(/'/g, "&#39;");
 }
 
+function normalizeLatexInlineMathDelimiters(text) {
+  return text.replace(/\\\(([\s\S]*?)\\\)/g, (_match, inner) => `$${inner.trim()}$`);
+}
+
 function setStatus(message) {
   statusText.textContent = message;
 }
@@ -473,6 +477,10 @@ function extractEquationText(raw) {
   if (inlineMatch) {
     return inlineMatch[1].trim();
   }
+  const latexInlineMatch = text.match(/^\\\(([\s\S]+)\\\)$/);
+  if (latexInlineMatch) {
+    return latexInlineMatch[1].trim();
+  }
 
   return text.replace(/\s+\(\d+\)\s*$/, "").replace(/\s+/g, " ").trim();
 }
@@ -498,7 +506,20 @@ function isEquationNumberOnlyLine(text) {
 }
 
 function isStandaloneInlineMathLine(text) {
-  return /^\$[^$\n]+\$$/.test(text.trim());
+  return /^\$[^$\n]+\$$/.test(text.trim()) || /^\\\([\s\S]+\\\)$/.test(text.trim());
+}
+
+function hasProseOutsideDelimitedInlineMath(text) {
+  const normalized = normalizeLatexInlineMathDelimiters(text);
+  if (normalized === text && !/\$[^$\n]+\$/.test(normalized)) {
+    return false;
+  }
+  const outsideMath = normalized
+    .replace(/\$[^$\n]+\$/g, "")
+    .replace(/\*\*/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return /[A-Za-z\u4e00-\u9fff]{2,}/.test(outsideMath);
 }
 
 function hasListItemProseOutsideMath(text) {
@@ -521,6 +542,9 @@ function isLikelyEquation(text) {
   }
   if (isStandaloneInlineMathLine(trimmed)) {
     return true;
+  }
+  if (hasProseOutsideDelimitedInlineMath(trimmed)) {
+    return false;
   }
 
   const hasMathKeyword = /\\frac|\\sum|\\int|\\sqrt|\\mathbb|\\mathcal|\\hat|\\tilde|\\left|\\right|\\begin|\\end|∑|∫|√|∞|⊙/.test(trimmed);
@@ -750,18 +774,19 @@ function formatPlainInlinePreviewText(text) {
 }
 
 function formatInlineContent(text) {
+  const normalizedText = normalizeLatexInlineMathDelimiters(text);
   const regex = /\$([^$\n]+)\$/g;
   let output = "";
   let cursor = 0;
 
-  for (const match of text.matchAll(regex)) {
+  for (const match of normalizedText.matchAll(regex)) {
     const start = match.index || 0;
-    output += formatPlainInlinePreviewText(text.slice(cursor, start));
+    output += formatPlainInlinePreviewText(normalizedText.slice(cursor, start));
     output += `<span class="inline-math">${renderEquationExpression(match[1])}</span>`;
     cursor = start + match[0].length;
   }
 
-  output += formatPlainInlinePreviewText(text.slice(cursor));
+  output += formatPlainInlinePreviewText(normalizedText.slice(cursor));
   return output;
 }
 

@@ -475,6 +475,8 @@ describe("worker api", () => {
       expect(data.text).toContain("## Gemini");
       expect(data.text).toContain("模型形式");
       expect(data.text).toContain("\\theta");
+      expect(data.text).toContain("$f_\\theta$");
+      expect(data.text).not.toContain("(f_\\theta)");
       expect(data.text).toContain("\\hat{y} = w^T x + b");
       expect(data.text).toContain("**假设函数:**\n\n$$y = w^T x + b$$");
       expect(data.text).toContain("**损失函数 (MSE):**\n\n$$J(w, b) = \\frac{1}{2m}");

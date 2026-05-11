@@ -215,12 +215,18 @@ function extractEquationText(raw: string): string {
 
   const inlineMath = t.match(/^\$([^\n]+)\$$/);
   if (inlineMath) return inlineMath[1].trim();
+  const latexInlineMath = t.match(/^\\\(([\s\S]+)\\\)$/);
+  if (latexInlineMath) return latexInlineMath[1].trim();
 
   return t.replace(/\s+/g, " ").trim();
 }
 
+function normalizeLatexInlineMathDelimiters(text: string): string {
+  return text.replace(/\\\(([\s\S]*?)\\\)/g, (_match, inner: string) => `$${inner.trim()}$`);
+}
+
 function normalizeInlineFormulaText(text: string): string {
-  return normalizeMathArtifactText(normalizeLatexLikeText(text));
+  return normalizeMathArtifactText(normalizeLatexLikeText(normalizeLatexInlineMathDelimiters(text)));
 }
 
 function readGroupedLatexValue(
@@ -1401,6 +1407,8 @@ function isLikelyEquation(raw: string): boolean {
   const isDisplayMath = /^\$\$[\s\S]+\$\$$/.test(trimmed);
   const isBracketBlock = /^\[[\s\S]+]$/.test(trimmed) || /^\\\[[\s\S]+\\\]$/.test(trimmed);
   if (isDisplayMath || isBracketBlock) return true;
+  if (isStandaloneInlineMathLine(trimmed)) return true;
+  if (hasProseOutsideDelimitedInlineMath(trimmed)) return false;
 
   const text = extractEquationText(raw);
   if (!text) return false;
@@ -1434,7 +1442,20 @@ function isLikelyEquation(raw: string): boolean {
 }
 
 function isStandaloneInlineMathLine(text: string): boolean {
-  return /^\$[^$\n]+\$$/.test(text.trim());
+  return /^\$[^$\n]+\$$/.test(text.trim()) || /^\\\([\s\S]+\\\)$/.test(text.trim());
+}
+
+function hasProseOutsideDelimitedInlineMath(text: string): boolean {
+  const normalized = normalizeLatexInlineMathDelimiters(text);
+  if (normalized === text && !/\$[^$\n]+\$/.test(normalized)) {
+    return false;
+  }
+  const outsideMath = normalized
+    .replace(/\$[^$\n]+\$/g, "")
+    .replace(/\*\*/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return /[A-Za-z\u4e00-\u9fff]{2,}/.test(outsideMath);
 }
 
 function centeredInlineMathParagraph(rawText: string): Paragraph {

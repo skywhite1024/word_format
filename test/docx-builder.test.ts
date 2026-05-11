@@ -107,6 +107,36 @@ describe("docx-builder", () => {
     expect(docContent).toContain("<m:t>i</m:t>");
   });
 
+  it("should strip latex inline math delimiters while preserving real inner parentheses", async () => {
+    const structured: StructuredDoc = {
+      mode: "official",
+      title: "LaTeX 内联公式测试",
+      blocks: [
+        {
+          type: "paragraph",
+          level: 0,
+          text: String.raw`式中 \(r_t(\theta)\) 是新旧策略概率比，\(\hat{A}_t\) 是优势函数估计，\(\epsilon\) 用于限制更新幅度。`,
+        },
+      ],
+      stats: { paragraphCount: 1, headingCount: 0, referenceCount: 0 },
+    };
+
+    const bytes = await buildDocx(structured);
+    const zip = await JSZip.loadAsync(bytes);
+    const documentXml = await zip.file("word/document.xml")?.async("string");
+    const docContent = documentXml ?? "";
+
+    expect(docContent).toContain("<m:oMath>");
+    expect(docContent).toContain("<m:sSub>");
+    expect(docContent).toContain("<m:t>r</m:t>");
+    expect(docContent).toContain("<m:t>θ</m:t>");
+    expect(docContent).toContain("<m:t>ε</m:t>");
+    expect(docContent).not.toContain("\\(");
+    expect(docContent).not.toContain("\\)");
+    expect(docContent.match(/<m:t>\(<\/m:t>/g)?.length ?? 0).toBe(1);
+    expect(docContent.match(/<m:t>\)<\/m:t>/g)?.length ?? 0).toBe(1);
+  });
+
   it("should normalize noisy unicode math artifacts into editable inline math", async () => {
     const structured: StructuredDoc = {
       mode: "official",

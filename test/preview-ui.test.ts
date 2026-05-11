@@ -119,6 +119,29 @@ describe("preview ui", () => {
     expect(html).not.toContain("$L =");
   });
 
+  it("should preview latex inline math delimiters without literal wrapper parentheses", () => {
+    const { renderStructuredPreview } = loadPreviewContext();
+    const html = renderStructuredPreview({
+      mode: "official",
+      title: "inline latex",
+      stats: { paragraphCount: 1, headingCount: 0, referenceCount: 0 },
+      blocks: [
+        {
+          type: "paragraph",
+          level: 0,
+          text: String.raw`式中 \(r_t(\theta)\) 是新旧策略概率比，\(\hat{A}_t\) 是优势函数估计，\(\epsilon\) 用于限制更新幅度。`,
+        },
+      ],
+    });
+
+    expect(html).toContain('class="inline-math"');
+    expect(html).toContain('<span class="inline-math">r<sub>t</sub>(');
+    expect(html).not.toContain('<span class="inline-math">(r');
+    expect(html).not.toContain(String.raw`\(`);
+    expect(html).not.toContain(String.raw`\)`);
+    expect(html).not.toContain(String.raw`\theta`);
+  });
+
   it("should preview imported Gemini tables with malformed absolute-value math as tables", () => {
     const { renderStructuredPreview } = loadPreviewContext();
     const html = renderStructuredPreview({

@@ -171,6 +171,19 @@ describe("analyzeText", () => {
     expect(cleaned).not.toContain("---");
   });
 
+  it("should normalize latex inline math delimiters without adding real parentheses", () => {
+    const raw = String.raw`式中 \(r_t(\theta)\) 是新旧策略概率比，\(\hat{A}_t\) 是优势函数估计，\(\epsilon\) 用于限制更新幅度。`;
+
+    const cleaned = sanitizeMarkdownText(raw);
+
+    expect(cleaned).toContain(String.raw`$r_t(\theta)$`);
+    expect(cleaned).toContain(String.raw`$\hat{A}_t$`);
+    expect(cleaned).toContain(String.raw`$\epsilon$`);
+    expect(cleaned).not.toContain(String.raw`\(`);
+    expect(cleaned).not.toContain(String.raw`\)`);
+    expect(cleaned).not.toContain(String.raw`(r_t(\theta))`);
+  });
+
   it("should detect chapter heading with spaces as level-1 heading", () => {
     const text = [
       "论文题目",

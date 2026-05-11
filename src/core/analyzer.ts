@@ -4,6 +4,10 @@ const SENTENCE_ENDINGS = ["。", "！", "？", "；", "：", ".", "!", "?", ";",
 const THESIS_HINTS = ["摘要", "ABSTRACT", "目录", "参考文献", "关键词", "致谢"];
 const MD_HEADING_PREFIX = "@@MDHEADING@@";
 
+function normalizeLatexInlineMathDelimiters(text: string): string {
+  return text.replace(/\\\(([\s\S]*?)\\\)/g, (_match, inner: string) => `$${inner.trim()}$`);
+}
+
 function stripCitationArtifacts(text: string): string {
   return text
     .replace(/\[cite_start\]/gi, "")
@@ -44,7 +48,7 @@ export function sanitizeMarkdownText(rawText: string): string {
     .replace(/[ \t]{2,}/g, " ")
     .replace(/[ \t]+\n/g, "\n");
 
-  return stripCitationArtifacts(cleaned).trim();
+  return normalizeLatexInlineMathDelimiters(stripCitationArtifacts(cleaned)).trim();
 }
 
 function extractMarkdownHeadingLevel(paragraph: string): number | null {
