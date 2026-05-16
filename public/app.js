@@ -421,26 +421,34 @@ function normalizeTableRowWidth(cells, columnCount) {
 }
 
 function isTableSeparatorRow(cells) {
-  return cells.length > 0 && cells.every((cell) => /^:?-{3,}:?$/.test(cell));
+  return cells.length > 0 && cells.every((cell) => /^:?-{2,}:?$/.test(cell));
 }
 
 function parseInlineMarkdownTable(raw) {
-  const normalized = raw.replace(/\|?\s*Export to Sheets\s*$/i, "").replace(/\|\|/g, "|\n|");
-  const rows = normalized
-    .split("\n")
-    .map((line) => line.trim())
-    .filter((line) => line.startsWith("|") && line.endsWith("|"));
-  if (rows.length < 2) {
-    return null;
-  }
+  const trimmed = raw.trim().replace(/\|?\s*Export to Sheets\s*$/i, "");
+  if (!trimmed.includes("|")) return null;
 
-  const parsedRows = rows.map(splitTableCells).filter((cells) => cells.length > 0);
-  if (parsedRows.length < 2 || !isTableSeparatorRow(parsedRows[1])) {
-    return null;
-  }
+  const rowCandidates = trimmed.includes("||")
+    ? trimmed
+        .split(/\|\|+/)
+        .map((row) => row.trim())
+        .filter((row) => row.includes("|"))
+    : trimmed
+        .split(/\n+/)
+        .map((row) => row.trim())
+        .filter((row) => row.startsWith("|") && row.endsWith("|"));
 
-  const contentRows = [parsedRows[0], ...parsedRows.slice(2)];
+  if (rowCandidates.length < 2) return null;
+
+  const parsedRows = rowCandidates.map((row) => splitTableCells(row)).filter((cells) => cells.length > 0);
+  if (parsedRows.length < 2) return null;
+
+  const contentRows = parsedRows.filter((cells) => !isTableSeparatorRow(cells));
+  if (contentRows.length < 2) return null;
+
   const columnCount = contentRows[0].length;
+  if (columnCount < 2) return null;
+
   return contentRows.map((cells) => normalizeTableRowWidth(cells, columnCount));
 }
 

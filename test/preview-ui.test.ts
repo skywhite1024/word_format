@@ -166,6 +166,31 @@ describe("preview ui", () => {
     expect(html).not.toContain("Export to Sheets");
   });
 
+  it("should preview collapsed markdown tables with short separator cells", () => {
+    const { renderStructuredPreview } = loadPreviewContext();
+    const html = renderStructuredPreview({
+      mode: "official",
+      title: "table preview",
+      stats: { paragraphCount: 2, headingCount: 0, referenceCount: 0 },
+      blocks: [
+        { type: "paragraph", level: 0, text: "**参考答案：**" },
+        {
+          type: "paragraph",
+          level: 0,
+          text:
+            "| 得分点 | 分值 || ------------------------------ | -- || 压力变送器PT将管网压力转换为模拟量信号送入PLC | 2分 || PLC将实际压力与设定值比较，并生成调节指令（可使用PID算法） | 2分 |",
+        },
+      ],
+    });
+
+    expect(html).toContain("<table>");
+    expect(html).toContain("<th>得分点</th>");
+    expect(html).toContain("<th>分值</th>");
+    expect(html).toContain("<td>2分</td>");
+    expect(html).not.toContain("| 得分点 | 分值");
+    expect(html).not.toContain("------------------------------");
+  });
+
   it("should limit very large previews by default and allow full rendering on demand", () => {
     const { renderStructuredPreview } = loadPreviewContext();
     const blocks = Array.from({ length: 260 }, (_item, index) => ({
